@@ -52,6 +52,23 @@ function renderWaitingRoom(){
   startBtn.style.display = (MY_UID === state.hostUid) ? 'block' : 'none';
   startBtn.disabled = players.length < 2;
   document.getElementById('waiting-hint').style.display = (MY_UID === state.hostUid) ? 'none' : 'block';
+
+  const isHost = MY_UID === state.hostUid;
+  const settings = state.settings || {};
+  const ruleFullset = document.getElementById('rule-fullset');
+  const ruleTrading = document.getElementById('rule-trading');
+  const ruleFreeParking = document.getElementById('rule-freeparking');
+  ruleFullset.checked = settings.requireFullSetToBuild !== false;
+  ruleTrading.checked = settings.tradingEnabled !== false;
+  ruleFreeParking.checked = !!settings.freeParkingJackpot;
+  [ruleFullset, ruleTrading, ruleFreeParking].forEach(el => {
+    el.disabled = !isHost;
+    el.closest('.rule-row').classList.toggle('disabled', !isHost);
+  });
+  document.getElementById('rules-readonly-hint').style.display = isHost ? 'none' : 'block';
+  ruleFullset.onchange = () => updateSetting('requireFullSetToBuild', ruleFullset.checked);
+  ruleTrading.onchange = () => updateSetting('tradingEnabled', ruleTrading.checked);
+  ruleFreeParking.onchange = () => updateSetting('freeParkingJackpot', ruleFreeParking.checked);
 }
 
 // ---------- Game board ----------
@@ -64,6 +81,29 @@ function renderGame(){
   renderActionBar();
   renderLog();
   renderPropertyDrawerButton();
+  renderTradeButton();
+  refreshOpenTradeModalIfNeeded();
+}
+
+function refreshOpenTradeModalIfNeeded(){
+  const modal = document.getElementById('modal');
+  if (!modal.classList.contains('show')) return;
+  const incomingPanel = document.getElementById('trade-tab-incoming');
+  if (!incomingPanel) return; // trade center isn't the open modal
+  renderIncomingTrades();
+  renderOutgoingTrades();
+  const tabs = modal.querySelectorAll('.trade-tab-btn');
+  if (tabs[0]) tabs[0].textContent = `Incoming (${pendingIncomingTrades().length})`;
+  if (tabs[1]) tabs[1].textContent = `Sent (${pendingOutgoingTrades().length})`;
+}
+
+function renderTradeButton(){
+  const btn = document.getElementById('btn-trades');
+  btn.style.display = 'inline-flex';
+  const count = pendingIncomingTrades().length;
+  const badge = document.getElementById('trades-badge');
+  if (count > 0){ badge.style.display='flex'; badge.textContent = count; }
+  else { badge.style.display='none'; }
 }
 
 function renderBoard(){
@@ -260,11 +300,13 @@ function openPropertyDetail(tileIndex){
 
   let controls = '';
   const isMine = pdata.owner === MY_UID;
-  if (isMine && tile.type === 'property' && isMyTurn()){
+  if (isMine && tile.type === 'property'){
+    const buildCheck = canBuildOn(tileIndex);
     controls += `<div class="modal-actions">
-      <button class="btn" id="mbtn-build" ${!ownsFullGroup(MY_UID, tile.group) || pdata.houses>=5 ? 'disabled' : ''}>Build (${pdata.houses>=4?'Hotel':'House'} — $${tile.house})</button>
+      <button class="btn" id="mbtn-build" ${buildCheck.ok ? '' : 'disabled title="'+escapeHtml(buildCheck.reason)+'"'}>Build (${pdata.houses>=4?'Hotel':'House'} — $${tile.house})</button>
       <button class="btn btn-secondary" id="mbtn-sell" ${pdata.houses<=0?'disabled':''}>Sell house (+$${Math.floor(tile.house/2)})</button>
-    </div>`;
+    </div>
+    ${!buildCheck.ok ? `<p class="muted" style="font-size:.78rem;">${escapeHtml(buildCheck.reason)}</p>` : ''}`;
   }
   if (isMine && pdata.houses===0 && isMyTurn()){
     controls += `<div class="modal-actions">
@@ -313,6 +355,174 @@ function openPropertiesDrawer(){
   });
 }
 
+// ---------- Trade Center ----------
+
+function describeTradeSide(side){
+  const parts = [];
+  if (side.cash) parts.push(`$${side.cash}`);
+  (side.properties||[]).forEach(idx => parts.push(BOARD[idx].name));
+  if (side.jailFreeCards) parts.push(`${side.jailFreeCards} Jail-Free card${side.jailFreeCards>1?'s':''}`);
+  return parts.length ? parts.join(', ') : 'nothing';
+}
+
+function openTradeCenter(){
+  const modal = document.getElementById('modal');
+  modal.innerHTML = `
+    <div class="modal-card" style="max-width:460px;">
+      <button class="modal-close" id="modal-close">✕</button>
+      <h3>Trades</h3>
+      <div class="trade-tabs">
+        <button class="trade-tab-btn active" data-tab="incoming">Incoming (${pendingIncomingTrades().length})</button>
+        <button class="trade-tab-btn" data-tab="outgoing">Sent (${pendingOutgoingTrades().length})</button>
+      </div>
+      <div class="trade-tab-panel active" id="trade-tab-incoming"></div>
+      <div class="trade-tab-panel" id="trade-tab-outgoing"></div>
+      <button class="btn btn-block" id="btn-new-trade" style="margin-top:14px;">+ Propose a Trade</button>
+    </div>`;
+  modal.classList.add('show');
+  document.getElementById('modal-close').onclick = () => modal.classList.remove('show');
+  modal.querySelectorAll('.trade-tab-btn').forEach(b => b.addEventListener('click', () => {
+    modal.querySelectorAll('.trade-tab-btn').forEach(x=>x.classList.remove('active'));
+    modal.querySelectorAll('.trade-tab-panel').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    document.getElementById('trade-tab-' + b.dataset.tab).classList.add('active');
+  }));
+  document.getElementById('btn-new-trade').onclick = () => openTradeBuilder();
+  renderIncomingTrades();
+  renderOutgoingTrades();
+}
+
+function renderIncomingTrades(){
+  const wrap = document.getElementById('trade-tab-incoming');
+  if (!wrap) return;
+  const trades = pendingIncomingTrades();
+  if (trades.length === 0){ wrap.innerHTML = '<p class="muted">No incoming offers right now.</p>'; return; }
+  wrap.innerHTML = trades.map(t => `
+    <div class="trade-card" data-id="${t.id}">
+      <div class="trade-parties">${escapeHtml(state.players[t.fromUid].name)} → you</div>
+      <div class="trade-side"><span class="label">They give:</span> ${escapeHtml(describeTradeSide(t.give))}</div>
+      <div class="trade-side"><span class="label">They want:</span> ${escapeHtml(describeTradeSide(t.receive))}</div>
+      ${t.note ? `<div class="trade-note">"${escapeHtml(t.note)}"</div>` : ''}
+      <div class="trade-actions">
+        <button class="btn" data-act="accept">Accept</button>
+        <button class="btn btn-secondary" data-act="counter">Counter</button>
+        <button class="btn btn-secondary" data-act="decline">Decline</button>
+      </div>
+    </div>`).join('');
+  wrap.querySelectorAll('.trade-card').forEach(card => {
+    const id = card.dataset.id;
+    const trade = state.trades[id];
+    card.querySelector('[data-act="accept"]').onclick = () => { respondTrade(id, 'accept'); document.getElementById('modal').classList.remove('show'); };
+    card.querySelector('[data-act="decline"]').onclick = () => { respondTrade(id, 'decline'); renderIncomingTrades(); };
+    card.querySelector('[data-act="counter"]').onclick = () => openTradeBuilder({
+      toUid: trade.fromUid, give: trade.receive, receive: trade.give, counterOf: trade.id
+    });
+  });
+}
+
+function renderOutgoingTrades(){
+  const wrap = document.getElementById('trade-tab-outgoing');
+  if (!wrap) return;
+  const trades = Object.values(state.trades||{}).filter(t => t.fromUid === MY_UID).sort((a,b)=>b.createdAt-a.createdAt).slice(0,15);
+  if (trades.length === 0){ wrap.innerHTML = '<p class="muted">You haven\'t sent any trade offers yet.</p>'; return; }
+  wrap.innerHTML = trades.map(t => `
+    <div class="trade-card" data-id="${t.id}">
+      <div class="trade-parties">You → ${escapeHtml(state.players[t.toUid].name)}
+        ${t.status !== 'pending' ? `<span class="trade-status-tag ${t.status}">${t.status}</span>` : ''}
+      </div>
+      <div class="trade-side"><span class="label">You give:</span> ${escapeHtml(describeTradeSide(t.give))}</div>
+      <div class="trade-side"><span class="label">You want:</span> ${escapeHtml(describeTradeSide(t.receive))}</div>
+      ${t.status === 'pending' ? `<div class="trade-actions"><button class="btn btn-secondary" data-act="cancel">Cancel offer</button></div>` : ''}
+    </div>`).join('');
+  wrap.querySelectorAll('[data-act="cancel"]').forEach(btn => {
+    const id = btn.closest('.trade-card').dataset.id;
+    btn.onclick = () => { respondTrade(id, 'cancel'); renderOutgoingTrades(); };
+  });
+}
+
+function openTradeBuilder(prefill){
+  const modal = document.getElementById('modal');
+  const others = otherActivePlayers();
+  if (others.length === 0){ showToast('No one else to trade with.'); return; }
+  const defaultTarget = prefill?.toUid || others[0];
+
+  modal.innerHTML = `
+    <div class="modal-card trade-builder" style="max-width:460px;">
+      <button class="modal-close" id="modal-close">✕</button>
+      <h3>${prefill?.counterOf ? 'Counter Offer' : 'Propose a Trade'}</h3>
+      <label>Trade with</label>
+      <select id="tb-target">
+        ${others.map(u => `<option value="${u}" ${u===defaultTarget?'selected':''}>${escapeHtml(state.players[u].name)}</option>`).join('')}
+      </select>
+
+      <div class="trade-cash-row">
+        <div>
+          <label>You give ($)</label>
+          <input type="text" inputmode="numeric" id="tb-give-cash" value="${prefill?.give?.cash||0}">
+        </div>
+        <div>
+          <label>You want ($)</label>
+          <input type="text" inputmode="numeric" id="tb-receive-cash" value="${prefill?.receive?.cash||0}">
+        </div>
+      </div>
+
+      <label>Your properties to give</label>
+      <div class="prop-checklist" id="tb-give-props"></div>
+
+      <label>Their properties to request</label>
+      <div class="prop-checklist" id="tb-receive-props"></div>
+
+      <label>Note (optional)</label>
+      <input type="text" id="tb-note" maxlength="80" value="${escapeHtml(prefill?.note||'')}" placeholder="e.g. throwing in cash to sweeten it">
+
+      <div class="modal-actions">
+        <button class="btn" id="tb-submit">Send Offer</button>
+        <button class="btn btn-secondary" id="tb-cancel">Cancel</button>
+      </div>
+    </div>`;
+  modal.classList.add('show');
+  document.getElementById('modal-close').onclick = () => modal.classList.remove('show');
+  document.getElementById('tb-cancel').onclick = () => modal.classList.remove('show');
+
+  const targetSelect = document.getElementById('tb-target');
+  function refreshPropLists(){
+    const target = targetSelect.value;
+    const myProps = tradablePropertiesOf(MY_UID);
+    const theirProps = tradablePropertiesOf(target);
+    const preGive = new Set(prefill?.give?.properties||[]);
+    const preReceive = new Set(prefill?.receive?.properties||[]);
+    document.getElementById('tb-give-props').innerHTML = myProps.length ? myProps.map(t => `
+      <label class="prop-check-row"><input type="checkbox" value="${t.i}" ${preGive.has(t.i)?'checked':''}> ${escapeHtml(t.name)}</label>`).join('')
+      : '<p class="muted" style="font-size:.8rem;">You have no tradable properties (houses must be sold first).</p>';
+    document.getElementById('tb-receive-props').innerHTML = theirProps.length ? theirProps.map(t => `
+      <label class="prop-check-row"><input type="checkbox" value="${t.i}" ${preReceive.has(t.i)?'checked':''}> ${escapeHtml(t.name)}</label>`).join('')
+      : '<p class="muted" style="font-size:.8rem;">They have no tradable properties right now.</p>';
+  }
+  targetSelect.onchange = refreshPropLists;
+  refreshPropLists();
+
+  document.getElementById('tb-submit').onclick = () => {
+    const toUid = targetSelect.value;
+    const giveCash = parseInt(document.getElementById('tb-give-cash').value) || 0;
+    const receiveCash = parseInt(document.getElementById('tb-receive-cash').value) || 0;
+    const giveProps = Array.from(document.querySelectorAll('#tb-give-props input:checked')).map(el => parseInt(el.value));
+    const receiveProps = Array.from(document.querySelectorAll('#tb-receive-props input:checked')).map(el => parseInt(el.value));
+    const note = document.getElementById('tb-note').value.trim();
+    if (giveCash===0 && receiveCash===0 && giveProps.length===0 && receiveProps.length===0){
+      showToast('Add at least something to the trade.'); return;
+    }
+    if (giveCash > state.players[MY_UID].money){ showToast("You don't have that much cash."); return; }
+    proposeTrade({
+      toUid,
+      give: { cash: giveCash, properties: giveProps },
+      receive: { cash: receiveCash, properties: receiveProps },
+      note,
+      counterOf: prefill?.counterOf || null
+    });
+    modal.classList.remove('show');
+  };
+}
+
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -340,6 +550,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-start-game').addEventListener('click', startGame);
   document.getElementById('btn-leave-waiting').addEventListener('click', goToLobby);
   document.getElementById('btn-properties').addEventListener('click', openPropertiesDrawer);
+  document.getElementById('btn-trades').addEventListener('click', openTradeCenter);
   document.getElementById('btn-leave-game').addEventListener('click', () => {
     if (confirm('Leave this game?')) goToLobby();
   });

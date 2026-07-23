@@ -49,15 +49,23 @@ Send that link to your friends. Whoever creates a room gets a 5-letter code; eve
 
 - One person picks **Create a room**, enters their name, picks max players, and shares the room code shown.
 - Everyone else picks **Join a room** and enters that code + their name.
+- While waiting, the **host** can toggle **House Rules** (everyone else sees the current settings, read-only):
+  - **Require full color set to build houses** — ON is the standard rule (own the whole color group, then build anywhere on your turn). OFF is a house rule: you don't need the full set, but you can only build by physically landing on that exact property.
+  - **Allow player trading** — lets anyone send a trade offer to anyone else, at any time, not just on their turn.
+  - **Free Parking jackpot** — taxes collect into a pot; landing on Free Parking wins it.
 - Once 2+ people have joined, the host clicks **Start Game**.
-- Standard rules are implemented: buying properties, rent (including railroads and utilities), Chance/Community Chest cards, jail (pay $50 / use a card / roll for doubles), houses & hotels (needs the full color set, evenly-built rule is not strictly enforced — up to you and your friends), mortgaging, passing GO, bankruptcy, and a win check.
+- Standard rules are implemented: buying properties, rent (including railroads and utilities), Chance/Community Chest cards, jail (pay $50 / use a card / roll for doubles), houses & hotels, mortgaging, passing GO, bankruptcy, and a win check.
 - Tap any property tile (on the board, or via **My Properties**) to see its rent table and build/sell/mortgage.
+- **Trades** (header button) works anytime, regardless of whose turn it is:
+  - **Incoming** tab shows every open offer sent to you at once — Accept, Decline, or Counter each independently (leaving one alone = deciding later, it just stays in the list).
+  - **Sent** tab shows your own outgoing offers, with a Cancel option while they're still pending.
+  - **Propose a Trade** lets you pick a player, check off properties from each side, and set cash amounts (and Jail-Free cards, if either of you has one).
+  - Trades are re-validated the moment someone hits Accept (so if a property was mortgaged, built on, or sold in the meantime, it'll tell you why the trade can't go through instead of silently breaking).
 
 ### What's intentionally simplified for v1 (good candidates for your house rules!)
-- **No trading between players yet.** Adding a trade-offer flow (propose → accept/reject) is a natural next feature.
 - **No auction when a player declines to buy.** Real rules auction it off to everyone; right now it just stays unowned.
 - **Even-building isn't enforced** (in real rules you must build houses evenly across a color group).
-- There's a `settings.freeParkingJackpot` flag already wired up in the code (off by default) — a common house rule where taxes collect into a pot and whoever lands on Free Parking wins it. Flip it on in `createRoom()` in `js/game.js` to see how a toggleable house rule is wired end-to-end, then follow that pattern for your own.
+- Trading is properties + cash + Jail-Free cards only — no bundling with in-progress mortgages beyond a straight ownership transfer (the mortgage status moves with the property as-is).
 
 ## 4. Where to add your own house rules
 

@@ -53,7 +53,7 @@ async function createRoom(name, maxPlayers){
   const room = {
     hostUid: MY_UID,
     status: 'lobby',
-    settings: { startingMoney: 1500, freeParkingJackpot: false, maxPlayers },
+    settings: { startingMoney: 1500, freeParkingJackpot: false, maxPlayers, requireFullSetToBuild: true, tradingEnabled: true },
     players: {
       [MY_UID]: { name, color, money: 1500, position: 0, inJail:false, jailTurns:0, bankrupt:false, jailFreeCards:0 }
     },
@@ -111,6 +111,11 @@ async function tryRejoin(){
   subscribeRoom();
   showScreen(room.status === 'lobby' ? 'waiting' : 'game');
   return true;
+}
+
+async function updateSetting(key, value){
+  if (!state || MY_UID !== state.hostUid || state.status !== 'lobby') return;
+  await roomRef('settings/' + key).set(value);
 }
 
 function startGame(){
@@ -491,13 +496,29 @@ async function endTurn(){
   await roomRef().update({ currentTurn: nextUid, turnPhase: 'roll', doublesStreak: 0 });
 }
 
+function canBuildOn(tileIndex){
+  const tile = BOARD[tileIndex];
+  if (tile.type !== 'property') return { ok:false, reason:'Only color properties can have houses.' };
+  const pdata = state.properties[tileIndex];
+  if (!pdata || pdata.owner !== MY_UID) return { ok:false, reason:'You don\'t own this property.' };
+  if (pdata.houses >= 5) return { ok:false, reason:'Already has a hotel.' };
+  if (!isMyTurn()) return { ok:false, reason:'You can only build on your own turn.' };
+  const requireFullSet = state.settings?.requireFullSetToBuild !== false;
+  if (requireFullSet){
+    if (!ownsFullGroup(MY_UID, tile.group)) return { ok:false, reason:'You need the whole color set to build.' };
+    return { ok:true };
+  }
+  // House rule: no full-set requirement, but you must be standing exactly on this tile right now.
+  if (state.players[MY_UID].position !== tileIndex) return { ok:false, reason:'House rule: you must land on this exact property to build here.' };
+  return { ok:true };
+}
+
 async function buildHouse(tileIndex){
+  const check = canBuildOn(tileIndex);
+  if (!check.ok){ showToast(check.reason); return; }
   const tile = BOARD[tileIndex];
   const pdata = state.properties[tileIndex];
   const player = state.players[MY_UID];
-  if (pdata.owner !== MY_UID) return;
-  if (!ownsFullGroup(MY_UID, tile.group)) { showToast('You need the full color set to build.'); return; }
-  if (pdata.houses >= 5) { showToast('Already has a hotel.'); return; }
   if (player.money < tile.house) { showToast("Can't afford that."); return; }
   await roomRef().update({
     [`properties/${tileIndex}/houses`]: pdata.houses + 1,
@@ -544,6 +565,108 @@ async function toggleMortgage(tileIndex){
 function ownsFullGroup(uid, group){
   const tiles = BOARD.filter(t => t.group === group);
   return tiles.every(t => state.properties[t.i].owner === uid);
+}
+
+// ---------- Trading (works regardless of whose turn it is) ----------
+
+function otherActivePlayers(){
+  return state.turnOrder.filter(u => u !== MY_UID && !state.players[u].bankrupt);
+}
+
+function tradablePropertiesOf(uid){
+  return BOARD.filter(t =>
+    (t.type==='property' || t.type==='railroad' || t.type==='utility') &&
+    state.properties[t.i] && state.properties[t.i].owner === uid &&
+    (t.type !== 'property' || state.properties[t.i].houses === 0)
+  );
+}
+
+async function proposeTrade({ toUid, give, receive, note, counterOf }){
+  if (!state.settings?.tradingEnabled){ showToast('Trading is turned off for this game.'); return; }
+  if (!toUid || toUid === MY_UID) return;
+  const tradeId = 'trade_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+  const trade = {
+    id: tradeId,
+    fromUid: MY_UID,
+    toUid,
+    give: { cash: give.cash||0, properties: give.properties||[], jailFreeCards: give.jailFreeCards||0 },
+    receive: { cash: receive.cash||0, properties: receive.properties||[], jailFreeCards: receive.jailFreeCards||0 },
+    note: note || '',
+    status: 'pending',
+    createdAt: Date.now(),
+    counterOf: counterOf || null
+  };
+  const updates = { [`trades/${tradeId}`]: trade };
+  if (counterOf) updates[`trades/${counterOf}/status`] = 'countered';
+  await roomRef().update(updates);
+  log(`${state.players[MY_UID].name} sent a trade offer to ${state.players[toUid].name}.`);
+  showToast('Trade offer sent!');
+}
+
+function validateTrade(trade){
+  const giver = state.players[trade.fromUid];
+  const receiver = state.players[trade.toUid];
+  if (!giver || !receiver || giver.bankrupt || receiver.bankrupt) return { valid:false, reason:'A player in this trade is no longer active.' };
+  if (giver.money < (trade.give.cash||0)) return { valid:false, reason:`${giver.name} no longer has enough cash.` };
+  if (receiver.money < (trade.receive.cash||0)) return { valid:false, reason:`${receiver.name} no longer has enough cash.` };
+  for (const idx of (trade.give.properties||[])){
+    const p = state.properties[idx];
+    if (!p || p.owner !== trade.fromUid) return { valid:false, reason:`${BOARD[idx].name} is no longer owned by ${giver.name}.` };
+    if (p.houses > 0) return { valid:false, reason:`${BOARD[idx].name} has houses on it now — sell them first.` };
+  }
+  for (const idx of (trade.receive.properties||[])){
+    const p = state.properties[idx];
+    if (!p || p.owner !== trade.toUid) return { valid:false, reason:`${BOARD[idx].name} is no longer owned by ${receiver.name}.` };
+    if (p.houses > 0) return { valid:false, reason:`${BOARD[idx].name} has houses on it now — sell them first.` };
+  }
+  if ((trade.give.jailFreeCards||0) > (giver.jailFreeCards||0)) return { valid:false, reason:`${giver.name} doesn't have enough Jail-Free cards anymore.` };
+  if ((trade.receive.jailFreeCards||0) > (receiver.jailFreeCards||0)) return { valid:false, reason:`${receiver.name} doesn't have enough Jail-Free cards anymore.` };
+  return { valid:true };
+}
+
+async function respondTrade(tradeId, action){
+  const trade = state.trades?.[tradeId];
+  if (!trade || trade.status !== 'pending') return;
+
+  if (action === 'decline'){
+    if (trade.toUid !== MY_UID) return;
+    await roomRef(`trades/${tradeId}/status`).set('declined');
+    log(`${state.players[MY_UID].name} declined a trade offer from ${state.players[trade.fromUid].name}.`);
+    return;
+  }
+  if (action === 'cancel'){
+    if (trade.fromUid !== MY_UID) return;
+    await roomRef(`trades/${tradeId}/status`).set('cancelled');
+    return;
+  }
+  if (action === 'accept'){
+    if (trade.toUid !== MY_UID) return;
+    const check = validateTrade(trade);
+    if (!check.valid){
+      showToast(check.reason);
+      await roomRef(`trades/${tradeId}/status`).set('invalid');
+      return;
+    }
+    const giver = state.players[trade.fromUid];
+    const receiver = state.players[trade.toUid];
+    const updates = {};
+    updates[`players/${trade.fromUid}/money`] = giver.money - (trade.give.cash||0) + (trade.receive.cash||0);
+    updates[`players/${trade.toUid}/money`] = receiver.money - (trade.receive.cash||0) + (trade.give.cash||0);
+    (trade.give.properties||[]).forEach(idx => { updates[`properties/${idx}/owner`] = trade.toUid; });
+    (trade.receive.properties||[]).forEach(idx => { updates[`properties/${idx}/owner`] = trade.fromUid; });
+    updates[`players/${trade.fromUid}/jailFreeCards`] = (giver.jailFreeCards||0) - (trade.give.jailFreeCards||0) + (trade.receive.jailFreeCards||0);
+    updates[`players/${trade.toUid}/jailFreeCards`] = (receiver.jailFreeCards||0) - (trade.receive.jailFreeCards||0) + (trade.give.jailFreeCards||0);
+    updates[`trades/${tradeId}/status`] = 'accepted';
+    await roomRef().update(updates);
+    log(`🤝 ${state.players[trade.toUid].name} accepted a trade with ${state.players[trade.fromUid].name}.`);
+  }
+}
+
+function pendingIncomingTrades(){
+  return Object.values(state.trades || {}).filter(t => t.toUid === MY_UID && t.status === 'pending');
+}
+function pendingOutgoingTrades(){
+  return Object.values(state.trades || {}).filter(t => t.fromUid === MY_UID && t.status === 'pending');
 }
 
 // ---------- 4 & 5 are in ui.js ----------
