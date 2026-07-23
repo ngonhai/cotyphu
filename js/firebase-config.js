@@ -23,13 +23,14 @@
 //    these are not secret keys, access is controlled by the Database Rules above).
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyCNWhZlKjyVQR7O93GGO21k-ZedF99MYiM",
+  authDomain: "monopoly-407c8.firebaseapp.com",
+  databaseURL: "https://monopoly-407c8-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "monopoly-407c8",
+  storageBucket: "monopoly-407c8.firebasestorage.app",
+  messagingSenderId: "168413879724",
+  appId: "1:168413879724:web:fa97126c00f85264caee09",
+  measurementId: "G-HM97CEJNCT"
 };
 
 firebase.initializeApp(firebaseConfig);
