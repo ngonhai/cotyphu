@@ -3,9 +3,38 @@
 function showScreen(name){
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + name).classList.add('active');
+  if (name === 'game') fitBoardToViewport();
+}
+
+// ---------- Board sizing ----------
+// CSS alone (dvh/vw calc against an assumed header/side-panel size) drifts from
+// reality at some zoom levels/browsers, which is what let the board render larger
+// than its actual space and get clipped by its own frame. This measures the *real*
+// rendered space inside #board-wrap — on both desktop (board-wrap shares a row with
+// the side panel) and mobile (board-wrap is flex:1 in a column above the stacked side
+// panel — see CSS) — and sets #board's pixel size directly from those real numbers.
+// The gold frame is a box-shadow drawn on #board itself, so it always exactly hugs
+// the board at whatever size this produces; there's no separate frame element that
+// could get out of sync or overhang past it.
+function fitBoardToViewport(){
+  const wrap = document.getElementById('board-wrap');
+  const board = document.getElementById('board');
+  if (!wrap || !board) return;
+
+  const cs = getComputedStyle(wrap);
+  const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+  const availW = wrap.clientWidth - padX;
+  const availH = wrap.clientHeight - padY;
+  if (availW <= 0 || availH <= 0) return; // not laid out yet (e.g. screen still hidden)
+
+  const size = Math.max(240, Math.min(availW, availH, 940));
+  board.style.width = size + 'px';
+  board.style.height = size + 'px';
 }
 
 function goToLobby(){
+  unsubscribeRoom();
   ROOM_ID = null;
   location.hash = '';
   showScreen('lobby');
@@ -25,14 +54,42 @@ function renderAll(){
   if (state.status === 'lobby'){
     showScreen('waiting');
     renderWaitingRoom();
+    hideWinnerBanner();
   } else if (state.status === 'playing'){
     showScreen('game');
     renderGame();
+    hideWinnerBanner();
   } else if (state.status === 'ended'){
     showScreen('game');
     renderGame();
     renderWinnerBanner();
+    maybeShowWinnerModal();
   }
+}
+
+// Shows a one-time celebratory popup for whoever is left standing after everyone
+// else has gone bankrupt. Guarded so it only pops up once per game (renderAll runs
+// on every Firebase update, and the room/winner won't change again after this).
+let winnerModalShownFor = null;
+function maybeShowWinnerModal(){
+  if (!state.winner) return;
+  const key = ROOM_ID + ':' + state.winner;
+  if (winnerModalShownFor === key) return;
+  winnerModalShownFor = key;
+
+  const modal = document.getElementById('modal');
+  const iWon = state.winner === MY_UID;
+  modal.innerHTML = `
+    <div class="modal-card winner-modal">
+      <div class="winner-modal-emoji">🏆🎉</div>
+      <h2>${escapeHtml(state.players[state.winner].name)} wins!</h2>
+      <p>${iWon ? "Congratulations — you're the last one standing!" : 'Everyone else went bankrupt — thanks for playing!'}</p>
+      <div class="modal-actions">
+        <button class="btn" id="winner-modal-close">${iWon ? 'Nice!' : 'Close'}</button>
+      </div>
+    </div>`;
+  modal.classList.add('show');
+  document.getElementById('winner-modal-close').onclick = () => modal.classList.remove('show');
 }
 
 // ---------- Waiting room ----------
@@ -42,9 +99,20 @@ function renderWaitingRoom(){
   const list = document.getElementById('waiting-players');
   list.innerHTML = '';
   const players = Object.entries(state.players || {});
+  const amHost = MY_UID === state.hostUid;
   players.forEach(([uid, p]) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span class="token-dot" style="background:${p.color}"></span> ${escapeHtml(p.name)} ${uid===state.hostUid ? '<span class="tag">HOST</span>' : ''} ${uid===MY_UID ? '<span class="tag you">YOU</span>' : ''}`;
+    li.innerHTML = `<span class="token-dot" style="background:${p.color}"></span> <span class="player-li-name">${escapeHtml(p.name)}</span> ${uid===state.hostUid ? '<span class="tag">HOST</span>' : ''} ${uid===MY_UID ? '<span class="tag you">YOU</span>' : ''}`;
+    if (amHost && uid !== state.hostUid){
+      const kickBtn = document.createElement('button');
+      kickBtn.className = 'btn-kick';
+      kickBtn.type = 'button';
+      kickBtn.textContent = 'Kick';
+      kickBtn.onclick = () => {
+        if (confirm(`Kick ${p.name} from the room?`)) kickPlayer(uid);
+      };
+      li.appendChild(kickBtn);
+    }
     list.appendChild(li);
   });
   document.getElementById('waiting-count').textContent = `${players.length} / ${state.settings?.maxPlayers ?? 6} players`;
@@ -58,31 +126,89 @@ function renderWaitingRoom(){
   const ruleFullset = document.getElementById('rule-fullset');
   const ruleTrading = document.getElementById('rule-trading');
   const ruleFreeParking = document.getElementById('rule-freeparking');
+  const ruleRentInJail = document.getElementById('rule-rentinjail');
+  const inputJailFine = document.getElementById('input-jailfine');
   ruleFullset.checked = settings.requireFullSetToBuild !== false;
   ruleTrading.checked = settings.tradingEnabled !== false;
   ruleFreeParking.checked = !!settings.freeParkingJackpot;
-  [ruleFullset, ruleTrading, ruleFreeParking].forEach(el => {
+  ruleRentInJail.checked = settings.collectRentIfOwnerInJail !== false;
+  inputJailFine.value = settings.jailFineAmount ?? 50;
+  [ruleFullset, ruleTrading, ruleFreeParking, ruleRentInJail].forEach(el => {
     el.disabled = !isHost;
     el.closest('.rule-row').classList.toggle('disabled', !isHost);
   });
+  inputJailFine.disabled = !isHost;
+  inputJailFine.closest('.rule-row').classList.toggle('disabled', !isHost);
   document.getElementById('rules-readonly-hint').style.display = isHost ? 'none' : 'block';
   ruleFullset.onchange = () => updateSetting('requireFullSetToBuild', ruleFullset.checked);
   ruleTrading.onchange = () => updateSetting('tradingEnabled', ruleTrading.checked);
   ruleFreeParking.onchange = () => updateSetting('freeParkingJackpot', ruleFreeParking.checked);
+  ruleRentInJail.onchange = () => updateSetting('collectRentIfOwnerInJail', ruleRentInJail.checked);
+  inputJailFine.onchange = () => {
+    const val = parseInt(inputJailFine.value);
+    updateSetting('jailFineAmount', (Number.isFinite(val) && val >= 0) ? val : 50);
+  };
+
+  const cashMode = settings.cashRuleMode === 'mortgage' ? 'mortgage' : 'sell';
+  const cashRadios = document.querySelectorAll('input[name="cashRuleMode"]');
+  cashRadios.forEach(r => {
+    r.checked = (r.value === cashMode);
+    r.disabled = !isHost;
+    r.onchange = () => updateSetting('cashRuleMode', r.value);
+  });
+  const cashModeRow = document.getElementById('rule-cashmode');
+  if (cashModeRow) cashModeRow.classList.toggle('disabled', !isHost);
+
+  const ruleGoBonusToggle = document.getElementById('rule-gobonus-toggle');
+  const inputGoBonusAmount = document.getElementById('input-gobonus-amount');
+  ruleGoBonusToggle.checked = !!settings.goBonusEnabled;
+  inputGoBonusAmount.value = settings.goBonusAmount ?? 200;
+  ruleGoBonusToggle.disabled = !isHost;
+  inputGoBonusAmount.disabled = !isHost || !ruleGoBonusToggle.checked;
+  document.getElementById('rule-gobonus').classList.toggle('disabled', !isHost);
+  ruleGoBonusToggle.onchange = () => {
+    updateSetting('goBonusEnabled', ruleGoBonusToggle.checked);
+    inputGoBonusAmount.disabled = !isHost || !ruleGoBonusToggle.checked;
+  };
+  inputGoBonusAmount.onchange = () => {
+    const val = parseInt(inputGoBonusAmount.value);
+    updateSetting('goBonusAmount', (Number.isFinite(val) && val >= 0) ? val : 200);
+  };
 }
 
 // ---------- Game board ----------
 
 function renderGame(){
   document.getElementById('game-room-code-label').textContent = ROOM_ID;
+  document.getElementById('spectator-badge').style.display = isSpectator() ? 'inline-block' : 'none';
+  maybeAnimateMoveHop();
   renderBoard();
   renderPlayerPanel();
   renderDice();
   renderActionBar();
   renderLog();
   renderPropertyDrawerButton();
+  renderBankruptButton();
   renderTradeButton();
   refreshOpenTradeModalIfNeeded();
+}
+
+// True for anyone watching the game who never took (or no longer has) a seat — either
+// a spectator who joined after the game started, or the rare case of a raw state where
+// this uid has no player record at all. Bankrupt players still have a player record
+// (they're spectating too, but stay visible in the player list), so this deliberately
+// only checks for a MISSING record, not a bankrupt one.
+function isSpectator(){
+  return !!(state && !state.players[MY_UID]);
+}
+
+// Header "Bankrupt" button: only visible while the game is live and you haven't
+// already given up — once you're bankrupt/spectating there's nothing left to give up.
+function renderBankruptButton(){
+  const btn = document.getElementById('btn-bankrupt');
+  const me = state.players[MY_UID];
+  const show = state.status === 'playing' && me && !me.bankrupt;
+  btn.style.display = show ? 'inline-flex' : 'none';
 }
 
 function refreshOpenTradeModalIfNeeded(){
@@ -99,6 +225,7 @@ function refreshOpenTradeModalIfNeeded(){
 
 function renderTradeButton(){
   const btn = document.getElementById('btn-trades');
+  if (isSpectator()){ btn.style.display = 'none'; return; }
   btn.style.display = 'inline-flex';
   const count = pendingIncomingTrades().length;
   const badge = document.getElementById('trades-badge');
@@ -107,7 +234,7 @@ function renderTradeButton(){
 }
 
 function renderBoard(){
-  const board = document.getElementById('board');
+  const board = document.getElementById('board-grid');
   if (board.childElementCount === 0){
     // build tiles once
     BOARD.forEach(tile => {
@@ -117,6 +244,7 @@ function renderBoard(){
       div.style.gridRow = pos.row;
       div.style.gridColumn = pos.col;
       div.dataset.i = tile.i;
+      div.dataset.side = tileInwardSide(pos);
       div.innerHTML = tileInnerHtml(tile);
       div.addEventListener('click', () => onTileClick(tile.i));
       board.appendChild(div);
@@ -130,17 +258,24 @@ function renderBoard(){
     board.appendChild(center);
   }
 
-  // update ownership stripes + houses
+  // update ownership ring + monopoly glow + houses
   BOARD.forEach(tile => {
     if (!(tile.type==='property'||tile.type==='railroad'||tile.type==='utility')) return;
     const pdata = state.properties[tile.i];
     const el = board.querySelector(`[data-i="${tile.i}"]`);
     el.classList.toggle('mortgaged', !!pdata.mortgaged);
-    let ownerStripe = el.querySelector('.owner-stripe');
+
     if (pdata.owner){
-      if (!ownerStripe){ ownerStripe = document.createElement('div'); ownerStripe.className='owner-stripe'; el.appendChild(ownerStripe); }
-      ownerStripe.style.background = state.players[pdata.owner].color;
-    } else if (ownerStripe){ ownerStripe.remove(); }
+      el.classList.add('owned');
+      el.style.setProperty('--owner-color', state.players[pdata.owner].color);
+    } else {
+      el.classList.remove('owned');
+      el.style.removeProperty('--owner-color');
+    }
+
+    const isMonopoly = tile.type === 'property' && pdata.owner && groupFullSetOwner(tile.group) === pdata.owner;
+    el.classList.toggle('monopoly', !!isMonopoly);
+
     let houseWrap = el.querySelector('.houses');
     if (houseWrap) houseWrap.remove();
     if (pdata.houses > 0){
@@ -154,17 +289,125 @@ function renderBoard(){
   renderTokens();
 }
 
+function hexToRgba(hex, alpha){
+  const h = hex.replace('#','');
+  const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Which edge of a tile faces the board's center — used to place the color-group dot
+// so all of them point inward toward the middle of the board, like a compass.
+function tileInwardSide(pos){
+  if (pos.row === 11) return 'top';
+  if (pos.row === 1) return 'bottom';
+  if (pos.col === 1) return 'right';
+  if (pos.col === 11) return 'left';
+  return 'bottom';
+}
+
+// True if a single player owns every tile in a color group (a "monopoly").
+function groupFullSetOwner(group){
+  const tiles = BOARD.filter(t => t.group === group);
+  if (tiles.length === 0 || tiles.some(t => !state.properties[t.i]?.owner)) return null;
+  const owners = new Set(tiles.map(t => state.properties[t.i].owner));
+  return owners.size === 1 ? [...owners][0] : null;
+}
+
 function tileInnerHtml(tile){
   const icon = { chance:'❓', chest:'📦', tax:'💰', jail:'🚔', free:'🅿️', gotojail:'👮', go:'➡️' }[tile.type] || '';
   const price = tile.price ? `<div class="tile-price">$${tile.price}</div>` : '';
-  return `<div class="tile-name">${icon} ${escapeHtml(tile.name)}</div>${price}`;
+  const dot = tile.group ? `<div class="group-dot group-${tile.group}"></div>` : '';
+  return `${dot}<div class="tile-name">${icon} ${escapeHtml(tile.name)}</div>${price}`;
+}
+
+// ---------- Step-by-step token hop animation ----------
+// While a player's real DB position hasn't caught up yet, we manually walk a single
+// "hop token" tile-by-tile so everyone sees the token physically move, rather than
+// snapping straight to the destination.
+
+let hoppingUid = null;   // uid currently being manually animated (skipped by renderTokens)
+let hopState = null;     // { uid, expectedFinalTile, key }
+let hopTimers = [];
+let hopReleaseFallbackTimer = null;
+
+function clearHopTimers(){ hopTimers.forEach(clearTimeout); hopTimers = []; }
+
+function ensureHopTokenEl(uid){
+  let el = document.getElementById('hop-token');
+  if (!el){
+    el = document.createElement('div');
+    el.id = 'hop-token';
+    el.className = 'player-token hopping';
+  }
+  el.style.background = state.players[uid].color;
+  return el;
+}
+
+function placeHopTokenOnTile(uid, tileIndex){
+  const el = ensureHopTokenEl(uid);
+  const tileEl = document.querySelector(`[data-i="${tileIndex}"]`);
+  if (tileEl){
+    tileEl.appendChild(el);
+    el.classList.remove('bounce');
+    void el.offsetWidth; // restart the CSS animation
+    el.classList.add('bounce');
+  }
+}
+
+function removeHopTokenEl(){
+  const el = document.getElementById('hop-token');
+  if (el) el.remove();
+}
+
+function maybeAnimateMoveHop(){
+  if (state.moveHop){
+    const { uid, from, steps, tumbleMs, stepMs, nonce } = state.moveHop;
+    const key = `${uid}-${from}-${steps}-${nonce}`;
+    if (!hopState || hopState.key !== key){
+      clearHopTimers();
+      if (hopReleaseFallbackTimer){ clearTimeout(hopReleaseFallbackTimer); hopReleaseFallbackTimer = null; }
+      const expectedFinalTile = (from + steps) % 40;
+      hopState = { uid, expectedFinalTile, key };
+      hoppingUid = uid;
+      placeHopTokenOnTile(uid, from % 40); // sit at the start tile through the dice tumble
+      hopTimers.push(setTimeout(() => {
+        for (let s=1; s<=steps; s++){
+          hopTimers.push(setTimeout(() => {
+            placeHopTokenOnTile(uid, (from + s) % 40);
+          }, (s-1) * stepMs));
+        }
+      }, tumbleMs));
+    }
+    return;
+  }
+  // Release the hop lock once the real DB position has caught up to where we animated to.
+  if (hopState){
+    const p = state.players[hopState.uid];
+    if (p && p.position === hopState.expectedFinalTile){
+      removeHopTokenEl();
+      hoppingUid = null;
+      hopState = null;
+      if (hopReleaseFallbackTimer){ clearTimeout(hopReleaseFallbackTimer); hopReleaseFallbackTimer = null; }
+    } else if (!hopReleaseFallbackTimer){
+      // Safety net: if a Chance/Chest card relocates the player again right after landing,
+      // position will never equal expectedFinalTile — release after a short grace period
+      // instead of leaving the token stuck forever.
+      hopReleaseFallbackTimer = setTimeout(() => {
+        removeHopTokenEl();
+        hoppingUid = null;
+        hopState = null;
+        hopReleaseFallbackTimer = null;
+        renderTokens();
+      }, 1500);
+    }
+  }
 }
 
 function renderTokens(){
-  document.querySelectorAll('.player-token').forEach(t => t.remove());
+  document.querySelectorAll('.player-token').forEach(t => { if (t.id !== 'hop-token') t.remove(); });
   const grouped = {};
   Object.entries(state.players).forEach(([uid,p]) => {
-    if (p.bankrupt) return;
+    if (p.bankrupt || uid === hoppingUid) return;
     grouped[p.position] = grouped[p.position] || [];
     grouped[p.position].push([uid,p]);
   });
@@ -173,44 +416,139 @@ function renderTokens(){
     if (!el) return;
     arr.forEach(([uid,p], idx) => {
       const tok = document.createElement('div');
-      tok.className = 'player-token' + (uid===MY_UID ? ' me' : '');
+      tok.className = 'player-token' + (uid===MY_UID ? ' me' : '') + (p.inJail ? ' in-jail' : '');
       tok.style.background = p.color;
       tok.style.transform = `translate(${idx*7}px, ${idx*7}px)`;
-      tok.title = p.name;
+      tok.title = p.inJail ? `${p.name} — in jail` : p.name;
       el.appendChild(tok);
     });
   });
 }
 
+// Tracks each player's money from the previous render so we can flash a "+$X"/"-$X"
+// next to their balance whenever it changes, then let it fade on its own (see the
+// money-delta CSS animation). Keyed by uid; reset whenever a fresh room is joined.
+let prevMoneyByUid = {};
+// Tracks each player's currently-showing delta element + its removal timer, so if a
+// new change lands before the old flash has finished, we swap it in immediately
+// instead of stacking two on top of each other or leaving the old one to finish late.
+let moneyDeltaByUid = {};
+
+// IMPORTANT: this updates existing card DOM nodes in place instead of wiping and
+// rebuilding the whole panel every call (renderGame — and therefore this — reruns on
+// *every* Firebase update, not just money changes: dice rolling, log entries, turn
+// changes, etc. all trigger it). Wiping innerHTML each time was destroying the
+// money-delta flash's <span> mid-animation within milliseconds of it appearing, which
+// is why it looked instant no matter how long the CSS animation was set to.
 function renderPlayerPanel(){
   const wrap = document.getElementById('player-panel');
-  wrap.innerHTML = '';
-  state.turnOrder.forEach(uid => {
+  const order = state.seatOrder || state.turnOrder;
+
+  order.forEach(uid => {
     const p = state.players[uid];
-    const card = document.createElement('div');
-    card.className = 'player-card' + (state.currentTurn===uid ? ' active-turn' : '') + (p.bankrupt ? ' bankrupt' : '');
-    card.innerHTML = `
-      <span class="token-dot" style="background:${p.color}"></span>
-      <div class="player-info">
-        <div class="player-name">${escapeHtml(p.name)}${uid===MY_UID?' (you)':''}${p.inJail?' 🚔':''}</div>
-        <div class="player-money">$${p.money}</div>
-      </div>
-      ${state.currentTurn===uid ? '<span class="turn-badge">TURN</span>' : ''}
-    `;
-    wrap.appendChild(card);
+    if (!p) return;
+
+    let card = wrap.querySelector(`.player-card[data-uid="${uid}"]`);
+    if (!card){
+      card = document.createElement('div');
+      card.dataset.uid = uid;
+      card.innerHTML = `
+        <span class="token-dot"></span>
+        <div class="player-info">
+          <div class="player-name"></div>
+          <div class="player-money"><span class="money-amount"></span></div>
+        </div>
+      `;
+      wrap.appendChild(card);
+    }
+
+    const inDebt = !p.bankrupt && p.money < 0;
+    card.className = 'player-card' + (state.currentTurn===uid ? ' active-turn' : '') + (p.bankrupt ? ' bankrupt' : '') + (inDebt ? ' in-debt' : '');
+    card.querySelector('.token-dot').style.background = p.color;
+    card.querySelector('.player-name').innerHTML =
+      `${escapeHtml(p.name)}${uid===MY_UID?' (you)':''}${p.inJail?' 🚔':''}${p.bankrupt ? ' <span class="status-badge bankrupt-badge">Bankrupt</span>' : ''}`;
+
+    // Host-only Kick button, hidden for the host's own card and for anyone already out.
+    let kickBtn = card.querySelector('.btn-kick');
+    if (MY_UID === state.hostUid && uid !== state.hostUid && !p.bankrupt){
+      if (!kickBtn){
+        kickBtn = document.createElement('button');
+        kickBtn.className = 'btn-kick';
+        kickBtn.type = 'button';
+        kickBtn.textContent = 'Kick';
+        card.appendChild(kickBtn);
+      }
+      kickBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (confirm(`Kick ${p.name} from the game? They'll be marked bankrupt.`)) kickPlayer(uid);
+      };
+    } else if (kickBtn){
+      kickBtn.remove();
+    }
+
+    const moneyWrap = card.querySelector('.player-money');
+    moneyWrap.classList.toggle('debt', inDebt);
+    moneyWrap.querySelector('.money-amount').textContent = `$${p.money}${inDebt?' ⚠️ in debt':''}`;
+
+    let turnBadge = card.querySelector('.turn-badge');
+    if (state.currentTurn === uid){
+      if (!turnBadge){ turnBadge = document.createElement('span'); turnBadge.className = 'turn-badge'; turnBadge.textContent = 'TURN'; card.appendChild(turnBadge); }
+    } else if (turnBadge){
+      turnBadge.remove();
+    }
+
+    const prev = prevMoneyByUid[uid];
+    const diff = (typeof prev === 'number') ? p.money - prev : 0;
+    if (diff !== 0 && !p.bankrupt){
+      const existing = moneyDeltaByUid[uid];
+      if (existing){ clearTimeout(existing.timer); existing.el.remove(); }
+      const delta = document.createElement('span');
+      delta.className = 'money-delta ' + (diff > 0 ? 'positive' : 'negative');
+      delta.textContent = (diff > 0 ? '+' : '-') + '$' + Math.abs(diff);
+      moneyWrap.appendChild(delta);
+      const timer = setTimeout(() => { delta.remove(); delete moneyDeltaByUid[uid]; }, 2250);
+      moneyDeltaByUid[uid] = { el: delta, timer };
+    }
+    prevMoneyByUid[uid] = p.money;
   });
+
+  // Drop cards for any uid no longer in the seat order (doesn't normally happen mid-game,
+  // but keeps this safe if it ever does).
+  Array.from(wrap.querySelectorAll('.player-card')).forEach(card => {
+    if (!order.includes(card.dataset.uid)) card.remove();
+  });
+
+  let pot = wrap.querySelector('.jackpot-line');
   if (state.settings?.freeParkingJackpot){
-    const pot = document.createElement('div');
-    pot.className = 'jackpot-line';
+    if (!pot){ pot = document.createElement('div'); pot.className = 'jackpot-line'; wrap.appendChild(pot); }
     pot.textContent = `🅿️ Free Parking pot: $${state.freeParkingPot||0}`;
-    wrap.appendChild(pot);
+    wrap.appendChild(pot); // keep it pinned after the (possibly reordered) player cards
+  } else if (pot){
+    pot.remove();
   }
 }
 
+let diceAnimTimer = null;
 function renderDice(){
+  const die1 = document.getElementById('die1');
+  const die2 = document.getElementById('die2');
+  if (state.rolling){
+    if (!diceAnimTimer){
+      die1.classList.add('rolling-die');
+      die2.classList.add('rolling-die');
+      diceAnimTimer = setInterval(() => {
+        die1.textContent = DICE_FACES[1 + Math.floor(Math.random()*6)];
+        die2.textContent = DICE_FACES[1 + Math.floor(Math.random()*6)];
+      }, 90);
+    }
+    return;
+  }
+  if (diceAnimTimer){ clearInterval(diceAnimTimer); diceAnimTimer = null; }
+  die1.classList.remove('rolling-die');
+  die2.classList.remove('rolling-die');
   const [d1,d2] = state.dice || [1,1];
-  document.getElementById('die1').textContent = DICE_FACES[d1];
-  document.getElementById('die2').textContent = DICE_FACES[d2];
+  die1.textContent = DICE_FACES[d1];
+  die2.textContent = DICE_FACES[d2];
 }
 const DICE_FACES = {1:'⚀',2:'⚁',3:'⚂',4:'⚃',5:'⚄',6:'⚅'};
 
@@ -219,16 +557,45 @@ function renderActionBar(){
   bar.innerHTML = '';
   if (state.status === 'ended') return;
 
-  const myTurn = isMyTurn();
+  if (isSpectator()){
+    bar.innerHTML = `<div class="waiting-msg">👀 You're spectating — sit back and watch!</div>`;
+    return;
+  }
+
   const me = state.players[MY_UID];
+
+  // Being in debt takes priority over everything else — whether or not it's your turn,
+  // you need to raise cash or declare bankruptcy before anything else can happen for you.
+  if (me && !me.bankrupt && me.money < 0){
+    renderDebtBar(bar, me);
+    return;
+  }
+
+  if (me && me.bankrupt){
+    bar.innerHTML = `<div class="waiting-msg">👋 You're out of the game — spectating the rest.</div>`;
+    return;
+  }
+
+  if (state.rolling){
+    bar.innerHTML = `<div class="waiting-msg">🎲 Rolling…</div>`;
+    return;
+  }
+
+  const myTurn = isMyTurn();
 
   if (!myTurn){
     bar.innerHTML = `<div class="waiting-msg">Waiting for ${escapeHtml(state.players[state.currentTurn]?.name || '...')} to play…</div>`;
     return;
   }
 
-  if (me.inJail){
-    bar.appendChild(btn('Pay $50 to get out', payJailFine, me.money < 50));
+  // Jail-escape options (pay fine / use card / roll for doubles) only apply at the
+  // START of a turn (turnPhase 'roll'). If a player just got sent to jail mid-turn
+  // (e.g. landed on Go To Jail, drew a card, or hit three doubles in a row), turnPhase
+  // is 'end' — they must click "End Turn" and wait for their next turn to try for jail,
+  // rather than immediately rolling again in the turn that jailed them.
+  if (me.inJail && state.turnPhase === 'roll'){
+    const fine = state.settings?.jailFineAmount ?? 50;
+    bar.appendChild(btn(`Pay $${fine} to get out`, payJailFine, me.money < fine));
     bar.appendChild(btn(`Use Jail-Free Card (${me.jailFreeCards||0})`, useJailCard, (me.jailFreeCards||0) < 1));
     bar.appendChild(btn('Roll for doubles', rollForJail));
     return;
@@ -245,6 +612,27 @@ function renderActionBar(){
   }
 }
 
+function renderDebtBar(bar, me){
+  const raiseCashHint = state.settings?.cashRuleMode === 'mortgage'
+    ? 'Mortgage properties'
+    : 'Sell houses/hotels back to the bank';
+  const banner = document.createElement('div');
+  banner.className = 'debt-banner';
+  banner.innerHTML = `⚠️ You're short <strong>$${Math.abs(me.money)}</strong>. ${escapeHtml(raiseCashHint)} to cover it, or declare bankruptcy.`;
+  bar.appendChild(banner);
+  const row = document.createElement('div');
+  row.className = 'debt-actions';
+  row.appendChild(btn('Manage My Properties', openPropertiesDrawer));
+  row.appendChild(btn('Declare Bankruptcy', confirmBankruptcy, false, true));
+  bar.appendChild(row);
+}
+
+function confirmBankruptcy(){
+  if (confirm("Declare bankruptcy? You'll be out of the game and your remaining properties will be handed over.")){
+    declareBankruptcy();
+  }
+}
+
 function btn(label, fn, disabled, secondary){
   const b = document.createElement('button');
   b.className = 'btn' + (secondary ? ' btn-secondary' : '');
@@ -254,10 +642,22 @@ function btn(label, fn, disabled, secondary){
   return b;
 }
 
+// Wraps every occurrence of a player's name in an already-HTML-escaped log message with
+// a span colored to that player's token color, so it's easy to scan who's who at a glance.
+function colorizeLogMessage(escapedMsg){
+  let result = escapedMsg;
+  Object.values(state.players || {}).forEach(p => {
+    const escapedName = escapeHtml(p.name);
+    if (!escapedName || !result.includes(escapedName)) return;
+    result = result.split(escapedName).join(`<span class="log-name" style="color:${p.color}">${escapedName}</span>`);
+  });
+  return result;
+}
+
 function renderLog(){
   const el = document.getElementById('log-panel');
   const entries = Object.values(state.log || {}).sort((a,b) => a.ts - b.ts).slice(-40);
-  el.innerHTML = entries.map(e => `<div class="log-entry">${escapeHtml(e.msg)}</div>`).join('');
+  el.innerHTML = entries.map(e => `<div class="log-entry">${colorizeLogMessage(escapeHtml(e.msg))}</div>`).join('');
   el.scrollTop = el.scrollHeight;
 }
 
@@ -271,10 +671,21 @@ function renderWinnerBanner(){
   el.style.display = 'block';
 }
 
+// Used any time we're NOT showing the ended-game state (new round started, back in
+// the lobby, etc.) — without this the banner set by renderWinnerBanner() had no
+// counterpart to turn it back off, so "<name> wins the game!" kept showing at the
+// top of the next game too. Clearing textContent as well (not just hiding) means a
+// stale name can't flash on screen for a frame before the next real update arrives.
+function hideWinnerBanner(){
+  const el = document.getElementById('winner-banner');
+  el.style.display = 'none';
+  el.textContent = '';
+}
+
 // ---------- Property management drawer ----------
 
 function renderPropertyDrawerButton(){
-  document.getElementById('btn-properties').style.display = 'inline-flex';
+  document.getElementById('btn-properties').style.display = isSpectator() ? 'none' : 'inline-flex';
 }
 
 function onTileClick(tileIndex){
@@ -290,8 +701,8 @@ function openPropertyDetail(tileIndex){
   const owner = pdata.owner ? state.players[pdata.owner].name : 'Unowned';
   let rentLines = '';
   if (tile.type === 'property'){
-    const labels = ['Base','1 house','2 houses','3 houses','4 houses','Hotel'];
-    rentLines = tile.rent.map((r,i) => `<div class="rent-row">${labels[i]}<span>$${r}</span></div>`).join('');
+    const labels = ['Base (or full set: double)','1 house','2 houses','3 houses','4 houses','Hotel'];
+    rentLines = tile.rent.map((r,i) => `<div class="rent-row">${labels[i]}<span>$${i===0 ? r+' / '+(r*2) : r}</span></div>`).join('');
   } else if (tile.type === 'railroad'){
     rentLines = tile.rent.map((r,i) => `<div class="rent-row">${i+1} railroad${i?'s':''}<span>$${r}</span></div>`).join('');
   } else {
@@ -300,25 +711,39 @@ function openPropertyDetail(tileIndex){
 
   let controls = '';
   const isMine = pdata.owner === MY_UID;
+  const cashRuleMode = state.settings?.cashRuleMode === 'mortgage' ? 'mortgage' : 'sell';
   if (isMine && tile.type === 'property'){
     const buildCheck = canBuildOn(tileIndex);
+    const sellBlocked = cashRuleMode === 'mortgage';
     controls += `<div class="modal-actions">
       <button class="btn" id="mbtn-build" ${buildCheck.ok ? '' : 'disabled title="'+escapeHtml(buildCheck.reason)+'"'}>Build (${pdata.houses>=4?'Hotel':'House'} — $${tile.house})</button>
-      <button class="btn btn-secondary" id="mbtn-sell" ${pdata.houses<=0?'disabled':''}>Sell house (+$${Math.floor(tile.house/2)})</button>
+      <button class="btn btn-secondary" id="mbtn-sell" ${(pdata.houses<=0 || sellBlocked)?'disabled':''} ${sellBlocked?'title="House rule: Mortgage Mode is on — sell is off."':''}>Sell house (+$${Math.floor(tile.house/2)})</button>
     </div>
-    ${!buildCheck.ok ? `<p class="muted" style="font-size:.78rem;">${escapeHtml(buildCheck.reason)}</p>` : ''}`;
+    ${!buildCheck.ok ? `<p class="muted" style="font-size:.78rem;">${escapeHtml(buildCheck.reason)}</p>` : ''}
+    ${sellBlocked ? `<p class="muted" style="font-size:.78rem;">House rule: Mortgage Mode is on, so houses can't be sold back — mortgage the property instead.</p>` : ''}`;
   }
   if (isMine && pdata.houses===0 && isMyTurn()){
+    const mortgageBlocked = cashRuleMode === 'sell' && !pdata.mortgaged;
     controls += `<div class="modal-actions">
-      <button class="btn btn-secondary" id="mbtn-mortgage">${pdata.mortgaged ? `Pay off mortgage (-$${Math.floor(tile.price/2*1.1)})` : `Mortgage (+$${Math.floor(tile.price/2)})`}</button>
-    </div>`;
+      <button class="btn btn-secondary" id="mbtn-mortgage" ${mortgageBlocked?'disabled':''} ${mortgageBlocked?'title="House rule: Sell Mode is on — mortgaging is off."':''}>${pdata.mortgaged ? `Pay off mortgage (-$${Math.floor(tile.price/2*1.1)})` : `Mortgage (+$${Math.floor(tile.price/2)})`}</button>
+    </div>
+    ${mortgageBlocked ? `<p class="muted" style="font-size:.78rem;">House rule: Sell Mode is on, so properties can't be mortgaged — sell houses back to the bank instead.</p>` : ''}`;
   }
+
+  const levelBadge = tile.type === 'property'
+    ? `<div class="level-badge level-${pdata.houses}">${
+        pdata.houses === 0 ? 'No buildings yet' :
+        pdata.houses === 5 ? '🏨 Hotel — max level' :
+        `🏠 Level ${pdata.houses} of 4`
+      }</div>`
+    : '';
 
   modal.innerHTML = `
     <div class="modal-card group-${tile.group||''}">
       <button class="modal-close" id="modal-close">✕</button>
       <h3>${escapeHtml(tile.name)}</h3>
       <div class="modal-owner">Owner: ${escapeHtml(owner)}${pdata.mortgaged ? ' (mortgaged)' : ''}</div>
+      ${levelBadge}
       <div class="rent-table">${rentLines}</div>
       ${controls}
     </div>`;
@@ -530,14 +955,40 @@ function escapeHtml(s){
 // ---------- Event wiring ----------
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // ResizeObserver catches every case that changes the board's available space —
+  // window resize, browser zoom, and the mobile/desktop layout breakpoint flipping —
+  // which plain 'resize' events don't reliably cover (zoom in particular).
+  const boardWrapEl = document.getElementById('board-wrap');
+  if (boardWrapEl && 'ResizeObserver' in window){
+    new ResizeObserver(() => fitBoardToViewport()).observe(boardWrapEl);
+  } else {
+    window.addEventListener('resize', fitBoardToViewport);
+  }
+
   const rejoined = await tryRejoin();
   if (!rejoined) showScreen('lobby');
 
   document.getElementById('btn-create-room').addEventListener('click', () => {
     const name = document.getElementById('input-name-create').value.trim();
     const maxPlayers = parseInt(document.getElementById('select-max-players').value);
+    const rawStartingCash = parseInt(document.getElementById('input-starting-cash').value);
+    const startingCash = (Number.isFinite(rawStartingCash) && rawStartingCash >= 0) ? rawStartingCash : 1500;
     if (!name){ showToast('Enter your name first.'); return; }
-    createRoom(name, maxPlayers);
+    createRoom(name, maxPlayers, startingCash);
+  });
+
+  const startingCashInput = document.getElementById('input-starting-cash');
+  const cashChips = Array.from(document.querySelectorAll('.cash-chip'));
+  cashChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      cashChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      startingCashInput.value = chip.dataset.value;
+    });
+  });
+  startingCashInput.addEventListener('input', () => {
+    const match = cashChips.find(c => c.dataset.value === startingCashInput.value);
+    cashChips.forEach(c => c.classList.toggle('active', c === match));
   });
 
   document.getElementById('btn-join-room').addEventListener('click', () => {
@@ -551,8 +1002,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-leave-waiting').addEventListener('click', goToLobby);
   document.getElementById('btn-properties').addEventListener('click', openPropertiesDrawer);
   document.getElementById('btn-trades').addEventListener('click', openTradeCenter);
+  document.getElementById('btn-bankrupt').addEventListener('click', () => {
+    if (confirm("Declare bankruptcy? You'll hand over your properties and become a spectator for the rest of the game.")){
+      giveUpBankruptcy();
+    }
+  });
   document.getElementById('btn-leave-game').addEventListener('click', () => {
-    if (confirm('Leave this game?')) goToLobby();
+    if (confirm("Leave this game? You'll be marked bankrupt and taken back to the lobby.")) leaveGame();
   });
   document.getElementById('modal').addEventListener('click', (e) => {
     if (e.target.id === 'modal') e.target.classList.remove('show');

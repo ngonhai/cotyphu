@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Boardwalk Night — play Monopoly-style online with friends</title>
+<title>XVIDEOS</title>
+<link rel="icon" href="icon.ico">
+<meta property="og:image" content="https://ngonhai.github.io/cotyphu/logo.png">
+<meta property="og:url" content="https://ngonhai.github.io/cotyphu/">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -30,6 +33,17 @@
           <option value="6">6</option>
           <option value="8">8</option>
         </select>
+        <label for="input-starting-cash">Starting cash</label>
+        <div class="cash-chip-row" id="cash-chip-row">
+          <button type="button" class="cash-chip" data-value="1000">$1,000</button>
+          <button type="button" class="cash-chip active" data-value="1500">$1,500</button>
+          <button type="button" class="cash-chip" data-value="2000">$2,000</button>
+          <button type="button" class="cash-chip" data-value="2500">$2,500</button>
+        </div>
+        <div class="numeric-input-row">
+          <span class="numeric-prefix">$</span>
+          <input type="number" id="input-starting-cash" min="0" step="50" value="1500" placeholder="Custom amount">
+        </div>
         <button class="btn btn-block" id="btn-create-room">Create Room</button>
       </div>
 
@@ -73,7 +87,45 @@
           <input type="checkbox" id="rule-freeparking">
           <span>
             <strong>Free Parking jackpot</strong>
-            <small>Taxes paid to the bank pile up in a pot; whoever lands on Free Parking collects it.</small>
+            <small>Taxes, card fines/repairs, and other payments to the bank pile up in a pot; whoever lands on Free Parking collects it all.</small>
+          </span>
+        </label>
+        <label class="rule-row">
+          <input type="checkbox" id="rule-rentinjail">
+          <span>
+            <strong>Collect rent while owner is in jail</strong>
+            <small>On (standard rule): rent is still owed even if the property's owner is currently in jail. Off (house rule): landing on a jailed player's property is rent-free until they're out.</small>
+          </span>
+        </label>
+        <div class="rule-row rule-numeric" id="rule-jailfine">
+          <span>
+            <strong>Jail bail amount</strong>
+            <small>Cost to pay your way out of jail immediately, and the amount owed if you fail to roll doubles after 3 turns.</small>
+            <div class="numeric-input-row">
+              <span class="numeric-prefix">$</span>
+              <input type="number" id="input-jailfine" min="0" step="10" value="50">
+            </div>
+          </span>
+        </div>
+        <div class="rule-row rule-cashmode" id="rule-cashmode">
+          <span>
+            <strong>Raising cash when you're short</strong>
+            <small>Picked once, for the whole game. Sell Mode: only selling houses/hotels back to the bank raises cash. Mortgage Mode: only mortgaging properties raises cash.</small>
+            <div class="radio-pair">
+              <label class="radio-option"><input type="radio" name="cashRuleMode" value="sell"> <span>Sell Mode</span></label>
+              <label class="radio-option"><input type="radio" name="cashRuleMode" value="mortgage"> <span>Mortgage Mode</span></label>
+            </div>
+          </span>
+        </div>
+        <label class="rule-row" id="rule-gobonus">
+          <input type="checkbox" id="rule-gobonus-toggle">
+          <span>
+            <strong>Bonus for landing exactly on GO</strong>
+            <small>Landing exactly on GO (not just passing over it) awards this extra amount, on top of the usual $200 for passing.</small>
+            <div class="numeric-input-row" style="max-width:160px;margin-top:8px;">
+              <span class="numeric-prefix">+$</span>
+              <input type="number" id="input-gobonus-amount" min="0" step="50" value="200">
+            </div>
           </span>
         </label>
         <p id="rules-readonly-hint" class="muted" style="font-size:.8rem;">Only the host can change these.</p>
@@ -88,17 +140,18 @@
   <!-- ============ GAME ============ -->
   <section id="screen-game" class="screen">
     <div class="game-header">
-      <h2>🎲 Boardwalk Night — Room <span id="game-room-code-label"></span></h2>
+      <h2>🎲 Boardwalk Night — Room <span id="game-room-code-label"></span> <span class="status-badge spectator-badge" id="spectator-badge" style="display:none;">👀 Spectating</span></h2>
       <div class="header-actions">
         <button class="icon-btn" id="btn-trades" style="display:none;">Trades<span class="badge" id="trades-badge" style="display:none;"></span></button>
         <button class="icon-btn" id="btn-properties" style="display:none;">My Properties</button>
+        <button class="icon-btn icon-btn-danger" id="btn-bankrupt" style="display:none;">Bankrupt</button>
         <button class="icon-btn" id="btn-leave-game">Leave</button>
       </div>
     </div>
     <div id="winner-banner"></div>
     <div class="game-body">
       <div class="board-wrap">
-        <div id="board"></div>
+        <div id="board"><div id="board-grid"></div></div>
       </div>
       <div class="side-panel">
         <div id="player-panel"></div>
@@ -120,6 +173,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
   <script src="js/firebase-config.js"></script>
   <script src="js/board-data.js"></script>
+  <script src="js/log-messages.js"></script>
   <script src="js/game.js"></script>
   <script src="js/ui.js"></script>
   <script>

@@ -58,6 +58,45 @@ const BOARD = [
   { i:39, type:'property',  name:'Diamond Plaza',     group:'darkblue', price:400, rent:[50,200,600,1400,1700,2000], house:200 }
 ];
 
+// ---------------------------------------------------------------------------
+// CHANCE_CARDS / CHEST_CARDS — fully editable card decks.
+//
+// Each card is: { text: 'what the card says', action: 'one of the types below', ...extra fields }
+// To add your own card: just add a new object to either array. To pick which
+// action it performs, use one of these action types (handled in drawCard() in game.js):
+//
+// ODDS: add a `weight` number to any card to make it come up more or less often.
+// Default weight is 1 (every card is equally likely, exactly like a real deck), so
+// you only need to add `weight` to the cards you want to change:
+//   - weight: 3   → 3x more likely than a default (weight 1) card
+//   - weight: 0.5 → half as likely
+// Weights are relative, not percentages — the deck is drawn from proportionally,
+// so it's fine to only tag a couple of cards; everything else just stays at 1.
+// Example — make "Pay a $15 fine" show up 3x as often, and the $200 goto-GO card
+// half as likely:
+//   { text: 'Pay a $15 fine.', action: 'cash', amount: -15, weight: 3 }
+//   { text: 'Advance to GO. Collect $200.', action: 'goto', to: 0, collectGo:true, weight: 0.5 }
+//
+//   'cash'            { amount }                pay (negative) or receive (positive) from the bank
+//   'goto'            { to, collectGo? }        jump to board index `to`; collectGo:true awards $200 if you pass GO getting there
+//   'move'            { amount }                move relative N spaces (negative = backwards), resolves whatever tile you land on
+//   'gotojail'        {}                        go directly to jail
+//   'jailfree'        {}                        gain a Get Out of Jail Free card (keepable, tradeable)
+//   'repairs'         { house, hotel }           pay (house * houses-you-own) + (hotel * hotels-you-own)
+//   'pay_each'        { amount }                 pay every other active player `amount`
+//   'collect_each'    { amount }                 collect `amount` from every other active player
+//   'nearest_rail'    {}                         advance to the next railroad clockwise, pay double rent if it's owned
+//   'nearest_utility' {}                         advance to the next utility clockwise
+//
+// Example — add a new Chance card that gives the player $75:
+//   { text: 'You found $75 on the sidewalk.', action: 'cash', amount: 75 }
+//
+// Want a brand-new *type* of effect (not listed above)? Add a new `case 'yourAction':`
+// branch inside the `drawCard()` function in js/game.js, following the same pattern as
+// the existing cases (read `room`/`player`, compute `updates`, write with roomRef().update(),
+// then call `await finishAction(uid);` at the end so doubles/turn-passing still works correctly).
+// ---------------------------------------------------------------------------
+
 const CHANCE_CARDS = [
   { text: 'Advance to GO. Collect $200.', action: 'goto', to: 0, collectGo:true },
   { text: 'Advance to Diamond Plaza.', action: 'goto', to: 39 },
