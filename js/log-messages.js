@@ -27,55 +27,81 @@ const LOG_MESSAGES = {
 
   // declineBuy(): player could afford the property but chose to pass anyway.
   declineBuy_choice: [
-    "{name} looks at {tile} and decides to pass.",
-    "{name} isn't interested in {tile} — passes it up.",
-    "{name} could buy {tile}, but chooses not to.",
-    "{name} takes a pass on {tile}."
+    "{name} đéo thích mua {tile}",
+    "{name} nhìn ô {tile} rồi nhếch mép bỏ đi",
+    "{name} chưa muốn mua {tile} lúc này",
+    "{tile} không quyến rũ được {name}",
+    "{tile} không mups đối với {name}"
   ],
 
   // declineBuy(): player didn't have enough cash to buy, even if they wanted to.
   declineBuy_cantAfford: [
-    "{name} can't afford {tile} and has to pass.",
-    "{name} doesn't have the cash for {tile} — no choice but to pass.",
-    "{name} is short on funds and lets {tile} go.",
-    "Not enough in the bank — {name} passes on {tile}."
+    "{name} đéo có tiền nên không mua được {tile}",
+    "{name} chỉ còn biết nhìn {tile} tiếc nuối",
+    "{name} để giành ô {tile} cho lần sau",
+    "{name} để giành ô {tile} cho người khác",
+    "{tile} ngoài tâm với của {name}"
   ],
 
   // resolveTile(): rent that leaves the payer in real trouble (see the bigHit
   // check next to where this is used in game.js).
   rent_bigHit: [
-    "{name} pays ${amount} rent to {owner} on {tile} — that one hurt.",
-    "Ouch — {name} hands {owner} ${amount} rent on {tile}, and it shows.",
-    "{name} pays a painful ${amount} rent on {tile}, owned by {owner}.",
-    "{name} is left reeling after paying {owner} ${amount} rent on {tile}."
+    "{name} trả ${amount} cho {owner} trên đất {tile} — đau thì vl",
+    "Đm — {name} phải trả {owner} ${amount} tiền thuê ô {tile}",
+    "{name} ngậm ngùi trả ${amount} trên ô {tile}, cái mà {owner} sở hữu",
+    "{name} choáng váng sau khi thanh toán {owner} ${amount} trên ô {tile}"
   ],
 
   // resolveTile(): an ordinary, easily-affordable rent payment.
   rent_minor: [
-    "{name} pays ${amount} rent to {owner} on {tile}.",
-    "{name} covers the ${amount} rent on {tile} (owned by {owner}) without much trouble.",
-    "A light ${amount} rent for {name} on {tile}, owned by {owner}."
+    "{name} bố thí ${amount} cho {owner} trên ô {tile} rẻ mạt",
+    "{name} lo liệu ${amount} khi giẫm {tile} ổn thỏa.",
+    " ${amount} đéo thấm thía {name} khi giẫm {tile}, còn {owner} thì húp."
   ],
 
   // sendToJail(): reason is whatever string was passed to sendToJail(uid, reason).
   sentToJail: [
-    "{name} gets hauled off to jail ({reason}).",
-    "Busted — {name} is sent to jail ({reason}).",
-    "{name} lands themselves in jail ({reason})."
+    "{name} cút cmm vào tù ({reason}).",
+    "Ngon — {name} tù ngay ({reason}).",
+    "{name} chào buồng 36 ({reason})."
   ],
 
   // Player's money hits negative and they hit the "Declare Bankruptcy" button.
   bankruptcy: [
-    "💥 {name} is wiped out and declares bankruptcy!",
-    "💥 It's over for {name} — bankruptcy.",
-    "💥 {name} can't recover and goes bankrupt."
+    "💥 {name} vỡ nợ!",
+    "💥 {name} kích hoạt chế độ không kếch xù!",
+    "💥 {name} đéo muốn chơi tiếp!"
   ],
 
   // Only one active (non-bankrupt) player remains.
   gameWin: [
-    "🏆 {name} takes the whole board — victory!",
-    "🏆 {name} wins it all!",
-    "🏆 Last one standing: {name} wins!"
+    "🏆 {name} thắng = may mắn!",
+    "🏆 {name} bú win",
+    "🏆 Còn thở: {name}!"
+  ],
+ 
+  // respondTrade(): receiver accepted a valid trade offer.
+  acceptTrade: [
+    "🤝 {name} và {fromName} phối giống thành công một thương vụ",
+    "🤝 {name} cùng {fromName} bắt tay một kèo buôn bán",
+    "🤝 {name} đã chấp nhận deal của {fromName}",
+    "🤝 {fromName} và {name} cooked something!"
+  ],
+ 
+  // respondTrade(): the player who made the offer cancelled it before a response.
+  cancelTrade: [
+    "{name} hủy kèo đến {toName}.",
+    "{name} không thích {toName}.",
+    "{toName}: \"{name} cút cmmd!!!\""
+  ],
+ 
+  // respondTrade(): player received a trade offer and declined it.
+  declineTrade: [
+    "{name} nay dám từ chối {fromName}",
+    "{name} đéo thích nói chuyện với {fromName}",
+    "{name} từ chối trade của {fromName}",
+    "{fromName} bị {name} từ chối...",
+    "Deal của {fromName} không giòn đối với {name}"
   ]
 };
 

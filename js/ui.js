@@ -198,6 +198,23 @@ function renderWaitingRoom(){
     const val = parseInt(inputGoBonusAmount.value);
     updateSetting('goBonusAmount', (Number.isFinite(val) && val >= 0) ? val : 200);
   };
+
+  const ruleAuction = document.getElementById('rule-auction-toggle');
+  const ruleAuctionRailways = document.getElementById('rule-auction-railways-toggle');
+  ruleAuction.checked = !!settings.auctionEnabled;
+  ruleAuctionRailways.checked = !!settings.auctionRailwaysEnabled;
+  ruleAuction.disabled = !isHost;
+  ruleAuctionRailways.disabled = !isHost;
+  document.getElementById('rule-auction').classList.toggle('disabled', !isHost);
+  document.getElementById('rule-auction-railways').classList.toggle('disabled', !isHost);
+  ruleAuction.onchange = () => updateSetting('auctionEnabled', ruleAuction.checked);
+  ruleAuctionRailways.onchange = () => updateSetting('auctionRailwaysEnabled', ruleAuctionRailways.checked);
+
+  const ruleJailVisitBonus = document.getElementById('rule-jailvisitbonus-toggle');
+  ruleJailVisitBonus.checked = !!settings.jailVisitBonusEnabled;
+  ruleJailVisitBonus.disabled = !isHost;
+  document.getElementById('rule-jailvisitbonus').classList.toggle('disabled', !isHost);
+  ruleJailVisitBonus.onchange = () => updateSetting('jailVisitBonusEnabled', ruleJailVisitBonus.checked);
 }
 
 // ---------- Game board ----------
@@ -214,6 +231,7 @@ function renderGame(){
   renderPropertyDrawerButton();
   renderBankruptButton();
   renderTradeButton();
+  renderAuctionModal();
   refreshOpenTradeModalIfNeeded();
 }
 
@@ -630,7 +648,13 @@ function renderActionBar(){
   } else if (state.turnPhase === 'action' && state.pendingBuy && state.pendingBuy.uid === MY_UID){
     const tile = BOARD[state.pendingBuy.tileIndex];
     bar.appendChild(btn(`Buy ${tile.name} — $${tile.price}`, buyProperty, me.money < tile.price));
-    bar.appendChild(btn('Decline', declineBuy, false, true));
+    if (state.settings?.auctionEnabled){
+      bar.appendChild(btn('Auction', startPropertyAuction, false, true));
+    } else {
+      bar.appendChild(btn('Decline', declineBuy, false, true));
+    }
+  } else if (state.turnPhase === 'action' && state.pendingRailAuction && state.pendingRailAuction.uid === MY_UID){
+    renderRailAuctionChoiceBar(bar);
   } else if (state.turnPhase === 'end'){
     bar.appendChild(btn('End Turn', endTurn));
   }
@@ -655,6 +679,97 @@ function confirmBankruptcy(){
   if (confirm("Declare bankruptcy? You'll be out of the game and your remaining properties will be handed over.")){
     declareBankruptcy();
   }
+}
+
+// House rule: Auction railways. Shown instead of the usual Buy/Auction/Decline bar
+// when the current player has landed on an unowned railroad under that sub-rule.
+function renderRailAuctionChoiceBar(bar){
+  const { tileIndex } = state.pendingRailAuction;
+  const tile = BOARD[tileIndex];
+  const pdata = state.properties[tileIndex];
+  const me = state.players[MY_UID];
+  const minBid = (pdata.auctionPrice||0) + 20;
+  const wrap = document.createElement('div');
+  wrap.className = 'rail-auction-bar';
+  wrap.innerHTML = `
+    <div class="rail-auction-info">
+      🚂 ${escapeHtml(tile.name)} — ${pdata.auctionPrice ? `current bid $${pdata.auctionPrice} by ${escapeHtml(state.players[pdata.auctionHighBidder]?.name || '?')}` : 'no bids yet'}
+    </div>
+    <div class="rail-auction-controls">
+      <div class="numeric-input-row">
+        <span class="numeric-prefix">$</span>
+        <input type="number" id="rail-bid-input" min="${minBid}" step="10" value="${minBid}">
+      </div>
+      <button class="btn" id="rail-bid-submit">Auction</button>
+      <button class="btn btn-secondary" id="rail-bid-decline">Decline</button>
+    </div>`;
+  bar.appendChild(wrap);
+  const submitBtn = wrap.querySelector('#rail-bid-submit');
+  submitBtn.disabled = me.money < minBid;
+  submitBtn.onclick = () => {
+    const val = parseInt(wrap.querySelector('#rail-bid-input').value);
+    bidRailroadAuction(val);
+  };
+  wrap.querySelector('#rail-bid-decline').onclick = declineRailroadAuction;
+}
+
+// House rule: Auction unowned properties. A live, shared 5-second bidding window that
+// every connected player sees at once — pops up as a modal for the duration of the
+// auction regardless of whose turn it technically is, since anyone can bid.
+function renderAuctionModal(){
+  const modal = document.getElementById('modal');
+  const auction = state.pendingAuction;
+  if (!auction){
+    if (modal.dataset.kind === 'auction'){
+      modal.classList.remove('show');
+      modal.dataset.kind = '';
+    }
+    return;
+  }
+  const tile = BOARD[auction.tileIndex];
+  const me = state.players[MY_UID];
+  const canParticipate = me && !me.bankrupt;
+  // Turn-based bidding, no spamming: whoever's currently on top has to wait for someone
+  // else to bid before they can raise it again.
+  const myTurnToBid = canParticipate && auction.currentBidder !== MY_UID;
+  modal.dataset.kind = 'auction';
+  modal.innerHTML = `
+    <div class="modal-card auction-modal">
+      <h3>🔨 Auction: ${escapeHtml(tile.name)}</h3>
+      <div class="auction-current-bid">Current bid: <strong>$${auction.currentBid}</strong></div>
+      <div class="auction-current-bidder">${auction.currentBidder ? `Highest bidder: ${escapeHtml(state.players[auction.currentBidder].name)}` : 'No bids yet'}</div>
+      <div class="auction-timer-track"><div class="auction-timer-bar" id="auction-timer-bar"></div></div>
+      ${canParticipate ? (myTurnToBid ? `
+      <div class="auction-bid-buttons">
+        <button class="btn" id="auction-bid-2">+$2</button>
+        <button class="btn" id="auction-bid-10">+$10</button>
+        <button class="btn" id="auction-bid-50">+$50</button>
+      </div>` : `<p class="muted">You're the top bidder — wait for someone else to raise it.</p>`)
+      : `<p class="muted">Watching this one from the sidelines.</p>`}
+    </div>`;
+  modal.classList.add('show');
+  if (canParticipate && myTurnToBid){
+    [2,10,50].forEach(amt => {
+      const b = document.getElementById(`auction-bid-${amt}`);
+      b.disabled = me.money < auction.currentBid + amt;
+      b.onclick = () => bidOnAuction(amt);
+    });
+  }
+  // Animate the bar shrinking from wherever it actually is (not necessarily full — a
+  // client that (re)joins mid-auction, or a re-render after a bid, both need it to
+  // reflect real time left) down to empty exactly when the bid window ends.
+  const bar = document.getElementById('auction-timer-bar');
+  const remaining = Math.max(0, auction.endsAt - Date.now());
+  const startFraction = Math.min(1, remaining / AUCTION_BID_WINDOW_MS);
+  bar.style.transition = 'none';
+  bar.style.width = (startFraction * 100) + '%';
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (!document.body.contains(bar)) return;
+      bar.style.transition = `width ${remaining}ms linear`;
+      bar.style.width = '0%';
+    });
+  });
 }
 
 function btn(label, fn, disabled, secondary){
@@ -727,6 +842,12 @@ function openPropertyDetail(tileIndex){
   if (tile.type === 'property'){
     const labels = ['Base (or full set: double)','1 house','2 houses','3 houses','4 houses','Hotel'];
     rentLines = tile.rent.map((r,i) => `<div class="rent-row">${labels[i]}<span>$${i===0 ? r+' / '+(r*2) : r}</span></div>`).join('');
+  } else if (tile.type === 'railroad' && state.settings?.auctionRailwaysEnabled){
+    const paid = pdata.purchasePrice;
+    rentLines = RAILROAD_AUCTION_MULTIPLIERS.map((m,i) =>
+      `<div class="rent-row">${i+1} railroad${i?'s':''}<span>${paid!=null ? '$'+Math.round(paid*m) : m+'× purchase price'}</span></div>`
+    ).join('');
+    rentLines += `<div class="rent-row muted" style="font-size:.75rem;">House rule: rent is what was paid for this railroad × the multiplier for how many the owner holds.</div>`;
   } else if (tile.type === 'railroad'){
     rentLines = tile.rent.map((r,i) => `<div class="rent-row">${i+1} railroad${i?'s':''}<span>$${r}</span></div>`).join('');
   } else {
@@ -767,6 +888,8 @@ function openPropertyDetail(tileIndex){
       <button class="modal-close" id="modal-close">✕</button>
       <h3>${escapeHtml(tile.name)}</h3>
       <div class="modal-owner">Owner: ${escapeHtml(owner)}${pdata.mortgaged ? ' (mortgaged)' : ''}</div>
+      ${(!pdata.owner && tile.type==='railroad' && state.settings?.auctionRailwaysEnabled && pdata.auctionPrice > 0)
+        ? `<div class="modal-owner">Current bid: $${pdata.auctionPrice} by ${escapeHtml(state.players[pdata.auctionHighBidder]?.name || '?')}</div>` : ''}
       ${levelBadge}
       <div class="rent-table">${rentLines}</div>
       ${controls}
@@ -915,6 +1038,17 @@ function openTradeBuilder(prefill){
         </div>
       </div>
 
+      <div class="trade-cash-row">
+        <div>
+          <label>Jail-Free cards to give</label>
+          <input type="number" min="0" inputmode="numeric" id="tb-give-jail" value="${prefill?.give?.jailFreeCards||0}">
+        </div>
+        <div>
+          <label>Jail-Free cards to request</label>
+          <input type="number" min="0" inputmode="numeric" id="tb-receive-jail" value="${prefill?.receive?.jailFreeCards||0}">
+        </div>
+      </div>
+
       <label>Your properties to give</label>
       <div class="prop-checklist" id="tb-give-props"></div>
 
@@ -946,6 +1080,15 @@ function openTradeBuilder(prefill){
     document.getElementById('tb-receive-props').innerHTML = theirProps.length ? theirProps.map(t => `
       <label class="prop-check-row"><input type="checkbox" value="${t.i}" ${preReceive.has(t.i)?'checked':''}> ${escapeHtml(t.name)}</label>`).join('')
       : '<p class="muted" style="font-size:.8rem;">They have no tradable properties right now.</p>';
+
+    const myJail = state.players[MY_UID].jailFreeCards||0;
+    const theirJail = state.players[target].jailFreeCards||0;
+    const giveJailInput = document.getElementById('tb-give-jail');
+    const receiveJailInput = document.getElementById('tb-receive-jail');
+    giveJailInput.max = myJail;
+    receiveJailInput.max = theirJail;
+    if ((parseInt(giveJailInput.value)||0) > myJail) giveJailInput.value = myJail;
+    if ((parseInt(receiveJailInput.value)||0) > theirJail) receiveJailInput.value = theirJail;
   }
   targetSelect.onchange = refreshPropLists;
   refreshPropLists();
@@ -956,15 +1099,18 @@ function openTradeBuilder(prefill){
     const receiveCash = parseInt(document.getElementById('tb-receive-cash').value) || 0;
     const giveProps = Array.from(document.querySelectorAll('#tb-give-props input:checked')).map(el => parseInt(el.value));
     const receiveProps = Array.from(document.querySelectorAll('#tb-receive-props input:checked')).map(el => parseInt(el.value));
+    const giveJail = Math.max(0, parseInt(document.getElementById('tb-give-jail').value) || 0);
+    const receiveJail = Math.max(0, parseInt(document.getElementById('tb-receive-jail').value) || 0);
     const note = document.getElementById('tb-note').value.trim();
-    if (giveCash===0 && receiveCash===0 && giveProps.length===0 && receiveProps.length===0){
+    if (giveCash===0 && receiveCash===0 && giveProps.length===0 && receiveProps.length===0 && giveJail===0 && receiveJail===0){
       showToast('Add at least something to the trade.'); return;
     }
     if (giveCash > state.players[MY_UID].money){ showToast("You don't have that much cash."); return; }
+    if (giveJail > (state.players[MY_UID].jailFreeCards||0)){ showToast("You don't have that many Jail-Free cards."); return; }
     proposeTrade({
       toUid,
-      give: { cash: giveCash, properties: giveProps },
-      receive: { cash: receiveCash, properties: receiveProps },
+      give: { cash: giveCash, properties: giveProps, jailFreeCards: giveJail },
+      receive: { cash: receiveCash, properties: receiveProps, jailFreeCards: receiveJail },
       note,
       counterOf: prefill?.counterOf || null
     });

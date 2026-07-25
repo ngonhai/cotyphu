@@ -213,6 +213,24 @@ select option{ background: var(--bg-2); color: var(--ink); }
 .rule-row.disabled{ opacity:.5; cursor:default; }
 .rule-numeric{ cursor:default; flex-direction:column; }
 .rule-numeric .numeric-input-row{ max-width: 160px; margin-top:8px; }
+.rule-sub{ margin-left: 26px; }
+
+/* ---------- Live property auction modal ---------- */
+.auction-modal{ text-align:center; }
+.auction-modal h3{ margin-bottom: 10px; }
+.auction-current-bid{ font-size:1.3rem; margin: 6px 0 2px; }
+.auction-current-bidder{ color: var(--ink-soft); font-size:.86rem; margin-bottom: 14px; }
+.auction-timer-track{ height: 14px; border-radius: 999px; background: rgba(255,255,255,.08); border:1px solid var(--glass-border); overflow:hidden; margin-bottom: 16px; }
+.auction-timer-bar{ height:100%; width:100%; border-radius: 999px; background: linear-gradient(90deg, #22d3ee, #facc15, #ef4444); }
+.auction-bid-buttons{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+.auction-bid-buttons .btn{ flex:1; min-width: 90px; }
+
+/* ---------- Railway sub-auction choice (inline in the action bar) ---------- */
+.rail-auction-bar{ display:flex; flex-direction:column; gap:8px; width:100%; }
+.rail-auction-info{ font-size:.86rem; color: var(--ink-soft); }
+.rail-auction-controls{ display:flex; align-items:stretch; gap:8px; flex-wrap:wrap; }
+.rail-auction-controls input[type="number"]{ max-width: 110px; }
+.rail-auction-controls .btn{ flex:0 0 auto; }
 
 .rule-cashmode{ cursor:default; }
 .radio-pair{ display:flex; gap:14px; margin-top:8px; flex-wrap:wrap; }

@@ -15,44 +15,44 @@
   <section id="screen-lobby" class="screen active">
     <div class="lobby-card">
       <div class="lobby-dice">⚀ ⚅</div>
-      <h1 class="lobby-title">Boardwalk Night</h1>
-      <p class="lobby-sub">A free, browser-based board game night for you and your friends.</p>
+      <h1 class="lobby-title">Cờ Bần Nông</h1>
+      <p class="lobby-sub">Người chơi là người thắng, không chơi thì không thắng.</p>
 
       <div class="tabs">
-        <button class="tab-btn active" data-tab="create">Create a room</button>
-        <button class="tab-btn" data-tab="join">Join a room</button>
+        <button class="tab-btn active" data-tab="create">Tạo Phòng</button>
+        <button class="tab-btn" data-tab="join">Tham Gia</button>
       </div>
 
       <div class="tab-panel active" id="tab-create">
-        <label for="input-name-create">Your name</label>
+        <label for="input-name-create">Tên cậu là gì</label>
         <input type="text" id="input-name-create" maxlength="16" placeholder="e.g. Heist">
-        <label for="select-max-players">Max players</label>
+        <label for="select-max-players">Max người chơi</label>
         <select id="select-max-players">
           <option value="4">4</option>
           <option value="5" selected>5</option>
           <option value="6">6</option>
           <option value="8">8</option>
         </select>
-        <label for="input-starting-cash">Starting cash</label>
+        <label for="input-starting-cash">Tiền Vốn</label>
         <div class="cash-chip-row" id="cash-chip-row">
-          <button type="button" class="cash-chip" data-value="1000">$1,000</button>
-          <button type="button" class="cash-chip active" data-value="1500">$1,500</button>
+          <button type="button" class="cash-chip" data-value="500">$500</button>
+          <button type="button" class="cash-chip active" data-value="1000">$1,000</button>
+          <button type="button" class="cash-chip" data-value="1500">$1,500</button>
           <button type="button" class="cash-chip" data-value="2000">$2,000</button>
-          <button type="button" class="cash-chip" data-value="2500">$2,500</button>
         </div>
         <div class="numeric-input-row">
           <span class="numeric-prefix">$</span>
           <input type="number" id="input-starting-cash" min="0" step="50" value="1500" placeholder="Custom amount">
         </div>
-        <button class="btn btn-block" id="btn-create-room">Create Room</button>
+        <button class="btn btn-block" id="btn-create-room">Tạo Phòng</button>
       </div>
 
       <div class="tab-panel" id="tab-join">
-        <label for="input-name-join">Your name</label>
+        <label for="input-name-join">Tên cậu là gì</label>
         <input type="text" id="input-name-join" maxlength="16" placeholder="e.g. Heist">
-        <label for="input-room-code">Room code</label>
+        <label for="input-room-code">Code Phòng</label>
         <input type="text" id="input-room-code" maxlength="5" placeholder="e.g. K7QXP" style="text-transform:uppercase">
-        <button class="btn btn-block" id="btn-join-room">Join Room</button>
+        <button class="btn btn-block" id="btn-join-room">Tham Gia</button>
       </div>
     </div>
   </section>
@@ -61,78 +61,99 @@
   <section id="screen-waiting" class="screen">
     <div class="waiting-card">
       <div class="room-code-box">
-        <div class="label">Room Code — share this link or code</div>
+        <div class="label">Code Phòng — chia sẻ cho người khác</div>
         <div class="code" id="room-code-display">-----</div>
       </div>
       <div id="waiting-count"></div>
       <ul id="waiting-players"></ul>
 
       <div class="house-rules-box">
-        <h3>House Rules</h3>
+        <h3>Luật Trực Nội</h3>
         <label class="rule-row">
           <input type="checkbox" id="rule-fullset">
           <span>
-            <strong>Require full color set to build houses</strong>
-            <small>On: build anywhere on your turn once you own the whole set. Off: build without owning the set, but only by landing exactly on that property.</small>
+            <strong>Cần đủ set màu trước khi up BĐS</strong>
+            <small>Bật: xây BĐS dù bạn ở bất cứ đâu trên bàn cờ khi đủ set màu đất. Tắt: nâng BĐS trên ô đất lẻ, nhưng cần giẫm đúng.</small>
           </span>
         </label>
         <label class="rule-row">
           <input type="checkbox" id="rule-trading">
           <span>
-            <strong>Allow player trading</strong>
-            <small>Anyone can send a trade offer to anyone, anytime — not just on their turn.</small>
+            <strong>Cho phép Trade</strong>
+            <small>Nghĩa là cho phép Trade</small>
           </span>
         </label>
         <label class="rule-row">
           <input type="checkbox" id="rule-freeparking">
           <span>
-            <strong>Free Parking jackpot</strong>
-            <small>Taxes, card fines/repairs, and other payments to the bank pile up in a pot; whoever lands on Free Parking collects it all.</small>
+            <strong>Ô Nghỉ Ngời</strong>
+            <small>Cho phép tích lũy tiền bị trừ của người chơi, giẫm vào là húp trọn.</small>
           </span>
         </label>
         <label class="rule-row">
           <input type="checkbox" id="rule-rentinjail">
           <span>
-            <strong>Collect rent while owner is in jail</strong>
-            <small>On (standard rule): rent is still owed even if the property's owner is currently in jail. Off (house rule): landing on a jailed player's property is rent-free until they're out.</small>
+            <strong>Nhận tiền phí khi ở trong tù</strong>
+            <small>Bật (standard rule): Phí vẫn thu, dù đi tù.  Tắt: Đi tù là đi tù, không có phí gì hết.</small>
           </span>
         </label>
         <div class="rule-row rule-numeric" id="rule-jailfine">
           <span>
-            <strong>Jail bail amount</strong>
-            <small>Cost to pay your way out of jail immediately, and the amount owed if you fail to roll doubles after 3 turns.</small>
+            <strong>Phí ra tù</strong>
+            <small>Lượng tiền mất để ra tù sớm, không thì cải tạo đủ tốt để ra thôi.</small>
             <div class="numeric-input-row">
               <span class="numeric-prefix">$</span>
-              <input type="number" id="input-jailfine" min="0" step="10" value="50">
+              <input type="number" id="input-jailfine" min="0" step="10" value="100">
             </div>
           </span>
         </div>
         <div class="rule-row rule-cashmode" id="rule-cashmode">
           <span>
-            <strong>Raising cash when you're short</strong>
-            <small>Picked once, for the whole game. Sell Mode: only selling houses/hotels back to the bank raises cash. Mortgage Mode: only mortgaging properties raises cash.</small>
+            <strong>Bán / Thế chấp</strong>
+            <small>Mode Bán: Bán BĐS và đất dứt điểm. Mode Thế chấp: Bán BĐS và đất không dứt điểm.</small>
             <div class="radio-pair">
-              <label class="radio-option"><input type="radio" name="cashRuleMode" value="sell"> <span>Sell Mode</span></label>
-              <label class="radio-option"><input type="radio" name="cashRuleMode" value="mortgage"> <span>Mortgage Mode</span></label>
+              <label class="radio-option"><input type="radio" name="cashRuleMode" value="sell"> <span>Mode Bán</span></label>
+              <label class="radio-option"><input type="radio" name="cashRuleMode" value="mortgage"> <span>Mode Thế chấp</span></label>
             </div>
           </span>
         </div>
         <label class="rule-row" id="rule-gobonus">
           <input type="checkbox" id="rule-gobonus-toggle">
           <span>
-            <strong>Bonus for landing exactly on GO</strong>
-            <small>Landing exactly on GO (not just passing over it) awards this extra amount, on top of the usual $200 for passing.</small>
+            <strong>Thêm tiền khi đến đúng ô Về Quê</strong>
+            <small>Giẫm đúng ô Về Quê (không phải đi qua) sẽ nhận thêm một ít tiền, thường thì là + $100.</small>
             <div class="numeric-input-row" style="max-width:160px;margin-top:8px;">
               <span class="numeric-prefix">+$</span>
-              <input type="number" id="input-gobonus-amount" min="0" step="50" value="200">
+              <input type="number" id="input-gobonus-amount" min="0" step="50" value="100">
             </div>
+          </span>
+        </label>
+        <label class="rule-row" id="rule-auction">
+          <input type="checkbox" id="rule-auction-toggle">
+          <span>
+            <strong>Mode Đấu giá</strong>
+            <small>Mua đứt hoặc đem đấu giá (bắt đầu với $2, +$2/+$10/+$50 dần dần); Không ai tham gia đấu giá = ô đất vẫn chưa được sở hữu</small>
+          </span>
+        </label>
+        <label class="rule-row" id="rule-auction-railways">
+          <input type="checkbox" id="rule-auction-railways-toggle">
+          <span>
+            <strong>Đấu giá Sân bay/Cảng</strong>
+            <small>Ai cũng tham gia đấu giá 4 ô đặc biệt sân bay/cảng. Ai cũng bỏ đấu giá = reset. Người trả giá cao nhất mà khi không còn ai thì sẽ sở hữu. Bú phết!</small>
+          </span>
+        </label>
+        <label class="rule-row" id="rule-jailvisitbonus">
+          <input type="checkbox" id="rule-jailvisitbonus-toggle">
+          <span>
+            <strong>Phí thăm tù</strong>
+            <small>Trong tù mà có người thì sẽ mất phí</small>
           </span>
         </label>
         <p id="rules-readonly-hint" class="muted" style="font-size:.8rem;">Only the host can change these.</p>
       </div>
 
       <button class="btn btn-block" id="btn-start-game">Start Game</button>
-      <p id="waiting-hint" class="muted" style="text-align:center;">Waiting for the host to start the game…</p>
+      <p id="waiting-hint" class="muted" style="text-align:center;">Chờ chủ phòng Start Game...</p>
       <button class="btn btn-secondary btn-block" id="btn-leave-waiting">Leave</button>
     </div>
   </section>
@@ -140,12 +161,12 @@
   <!-- ============ GAME ============ -->
   <section id="screen-game" class="screen">
     <div class="game-header">
-      <h2>🎲 Boardwalk Night — Room <span id="game-room-code-label"></span> <span class="status-badge spectator-badge" id="spectator-badge" style="display:none;">👀 Spectating</span></h2>
+      <h2>🎲 Cờ Bần Nông — Code <span id="game-room-code-label"></span> <span class="status-badge spectator-badge" id="spectator-badge" style="display:none;">👀 Spectating</span></h2>
       <div class="header-actions">
         <button class="icon-btn" id="btn-trades" style="display:none;">Trades<span class="badge" id="trades-badge" style="display:none;"></span></button>
-        <button class="icon-btn" id="btn-properties" style="display:none;">My Properties</button>
-        <button class="icon-btn icon-btn-danger" id="btn-bankrupt" style="display:none;">Bankrupt</button>
-        <button class="icon-btn" id="btn-leave-game">Leave</button>
+        <button class="icon-btn" id="btn-properties" style="display:none;">Tài sản của Tui</button>
+        <button class="icon-btn icon-btn-danger" id="btn-bankrupt" style="display:none;">Phá sản</button>
+        <button class="icon-btn" id="btn-leave-game">Rời</button>
       </div>
     </div>
     <div id="winner-banner"></div>
