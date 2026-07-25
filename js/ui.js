@@ -33,7 +33,13 @@ function fitBoardToViewport(){
   // #board-wrap. That 1px is invisible at 100% zoom but gets magnified into a
   // visibly clipped strip at high browser zoom — which is what made this look
   // fine normally but break specifically when zoomed in.
-  const size = Math.max(240, Math.floor(Math.min(availW, availH, 940)) - 1);
+  // 940px is a soft ceiling and was fine as a hard Math.min(). But the old 240px
+  // floor was a Math.max() — meaning if the real available space was ever less
+  // than 240px (e.g. a very short landscape phone view), it forced the board to
+  // 240px anyway, guaranteeing an overflow. A board that's smaller than ideal
+  // but fully visible is strictly better than one that's "readable" on paper
+  // and physically clipped, so we just never ask for more than what's there.
+  const size = Math.max(1, Math.floor(Math.min(availW, availH, 940)) - 1);
   board.style.width = size + 'px';
   board.style.height = size + 'px';
 }
