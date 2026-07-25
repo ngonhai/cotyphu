@@ -21,11 +21,24 @@ function fitBoardToViewport(){
   const board = document.getElementById('board');
   if (!wrap || !board) return;
 
-  // wrap.clientWidth/clientHeight are the *padding-box* size (content + padding
-  // already included) — they must NOT have padding subtracted again, or the
-  // board ends up undersized by double the padding on every axis.
-  const availW = wrap.clientWidth;
-  const availH = wrap.clientHeight;
+  // wrap.clientWidth/clientHeight are the *padding-box* size (content + wrap's
+  // own padding included). But #board's `max-width:100% / max-height:100%`
+  // (see CSS) resolve against the *content box* of #board-wrap — padding is NOT
+  // part of that reference box per spec. Using clientWidth/clientHeight directly
+  // therefore measures a box a bit bigger than what #board is actually allowed
+  // to fill, and because the same 'size' value is applied to both width AND
+  // height, only whichever axis happens to be tighter gets silently re-clamped
+  // by the CSS max-width/max-height — the other axis keeps the inflated value,
+  // so #board quietly stops being square and can end up wider or taller than
+  // its wrap by up to 2x the padding, on whichever side that isn't the binding
+  // constraint. Subtracting the wrap's own padding here makes the measured
+  // space match the box CSS will actually enforce, so both boxes agree and
+  // #board comes out square and fully inside #board-wrap on every axis.
+  const wrapStyle = getComputedStyle(wrap);
+  const padX = parseFloat(wrapStyle.paddingLeft) + parseFloat(wrapStyle.paddingRight);
+  const padY = parseFloat(wrapStyle.paddingTop) + parseFloat(wrapStyle.paddingBottom);
+  const availW = wrap.clientWidth - padX;
+  const availH = wrap.clientHeight - padY;
   if (availW <= 0 || availH <= 0) return; // not laid out yet (e.g. screen still hidden)
 
   // Floor (not round) and knock off a 1px safety margin so sub-pixel layout

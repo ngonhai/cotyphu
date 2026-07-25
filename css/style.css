@@ -294,6 +294,13 @@ select option{ background: var(--bg-2); color: var(--ink); }
 .board-wrap{
   flex:1; display:flex; align-items:center; justify-content:center; padding: 14px;
   overflow:auto; min-height:0; min-width:0;
+  /* Explicit touch-scroll affordances: overflow:auto alone scrolls fine with a
+     mouse/trackpad, but on some mobile browsers a plain overflow:auto region
+     needs these to reliably respond to a finger swipe (rather than the swipe
+     being interpreted as a page-level gesture and going nowhere), and
+     overscroll-behavior stops a swipe at the board's edge from "leaking" into
+     rubber-banding the whole page. */
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-x pan-y;
   background:
     radial-gradient(ellipse 700px 500px at 50% 30%, rgba(34,211,238,.06), transparent 65%),
     linear-gradient(160deg, var(--felt) 0%, var(--felt-2) 100%);
@@ -670,7 +677,10 @@ select option{ background: var(--bg-2); color: var(--ink); }
      behavior applies here too. */
   .board-wrap{ flex:1; min-height:0; padding:6px; perspective: none; }
   /* Pre-JS fallback only — see the #board comment above. Mirrors the same pattern with
-     a mobile-appropriate share of viewport height. */
+     a mobile-appropriate share of viewport height. The header can now wrap onto two
+     lines on narrow phones (see .game-header flex-wrap), so this uses the flex layout
+     itself (board-wrap's real leftover space) rather than a fixed --header-h guess —
+     fitBoardToViewport() replaces this with an exact measurement immediately anyway. */
   #board{ --board-h: max(240px, min(50dvh, 940px)); }
   #board-grid{ transform: none; } /* flatten the 2.5D tilt on small screens for readability/touch accuracy */
   .die{ font-size:1.4rem; }
