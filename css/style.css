@@ -264,9 +264,23 @@ select option{ background: var(--bg-2); color: var(--ink); }
   padding: 11px 18px; background: rgba(10,14,26,.6); backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--glass-border-strong); flex-shrink:0; position: relative; z-index: 2;
   box-shadow: 0 4px 20px rgba(0,0,0,.3);
+  /* The title + 4 action buttons don't always fit on one line on narrow phones.
+     Without wrap, flex keeps everything on a single row and anything that doesn't
+     fit (Bankrupt/Leave) gets pushed past the header's right edge — and since
+     #screen-game has overflow:hidden, that overflow is silently clipped rather
+     than scrollable, making those buttons permanently unreachable. Wrapping puts
+     the button row on its own line instead, so nothing is ever off-screen. */
+  flex-wrap: wrap; row-gap: 8px;
 }
-.game-header h2{ font-size:1.1rem; color: var(--ink); }
-.header-actions{ display:flex; gap:8px; }
+.game-header h2{
+  font-size:1.1rem; color: var(--ink);
+  /* min-width:0 lets this flex item shrink below its content's natural width
+     (the default min-width:auto on flex items is what was forcing the row to
+     overflow instead of truncating). Long room titles ellipsize instead of
+     shoving the buttons off the edge. */
+  min-width:0; flex: 1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.header-actions{ display:flex; gap:8px; flex-wrap:wrap; }
 .icon-btn{
   background: var(--glass); border:1px solid var(--glass-border); color: var(--ink);
   padding: 9px 13px; border-radius:11px; cursor:pointer; font-weight:700; font-size:.85rem;
@@ -643,6 +657,10 @@ select option{ background: var(--bg-2); color: var(--ink); }
 
 /* ---------- Mobile ---------- */
 @media (max-width: 860px){
+  .game-header{ padding: 9px 12px; gap:8px; }
+  .game-header h2{ font-size:1rem; flex-basis: 100%; }
+  .header-actions{ gap:6px; }
+  .icon-btn{ padding: 7px 10px; font-size:.78rem; }
   .game-body{ flex-direction:column; }
   /* flex:1 (instead of the old flex:0 0 auto) makes .board-wrap claim exactly whatever
      vertical space is left after the header and the stacked side-panel below it — a
