@@ -21,14 +21,19 @@ function fitBoardToViewport(){
   const board = document.getElementById('board');
   if (!wrap || !board) return;
 
-  const cs = getComputedStyle(wrap);
-  const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
-  const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
-  const availW = wrap.clientWidth - padX;
-  const availH = wrap.clientHeight - padY;
+  // wrap.clientWidth/clientHeight are the *padding-box* size (content + padding
+  // already included) — they must NOT have padding subtracted again, or the
+  // board ends up undersized by double the padding on every axis.
+  const availW = wrap.clientWidth;
+  const availH = wrap.clientHeight;
   if (availW <= 0 || availH <= 0) return; // not laid out yet (e.g. screen still hidden)
 
-  const size = Math.max(240, Math.min(availW, availH, 940));
+  // Floor (not round) and knock off a 1px safety margin so sub-pixel layout
+  // rounding can never push #board's border/box-shadow a hair past the edge of
+  // #board-wrap. That 1px is invisible at 100% zoom but gets magnified into a
+  // visibly clipped strip at high browser zoom — which is what made this look
+  // fine normally but break specifically when zoomed in.
+  const size = Math.max(240, Math.floor(Math.min(availW, availH, 940)) - 1);
   board.style.width = size + 'px';
   board.style.height = size + 'px';
 }
@@ -956,13 +961,27 @@ function escapeHtml(s){
 
 document.addEventListener('DOMContentLoaded', async () => {
   // ResizeObserver catches every case that changes the board's available space —
-  // window resize, browser zoom, and the mobile/desktop layout breakpoint flipping —
-  // which plain 'resize' events don't reliably cover (zoom in particular).
+  // window resize, desktop browser zoom (Ctrl +/-), and the mobile/desktop layout
+  // breakpoint flipping — which plain 'resize' events don't reliably cover.
   const boardWrapEl = document.getElementById('board-wrap');
   if (boardWrapEl && 'ResizeObserver' in window){
     new ResizeObserver(() => fitBoardToViewport()).observe(boardWrapEl);
   } else {
     window.addEventListener('resize', fitBoardToViewport);
+  }
+
+  // Mobile pinch-zoom is a different beast: it changes the *visual* viewport
+  // (what the user can currently see) without changing the *layout* viewport
+  // (what CSS measures things against). #board-wrap's clientWidth/clientHeight
+  // never move in that case, so neither ResizeObserver nor 'resize' ever fires,
+  // and the board stays the size it was computed at while everything on screen
+  // visually scales up around it — which is exactly what made the board's edge
+  // look like it "grew past its frame" specifically when zooming in on a phone.
+  // The visualViewport API is the one thing that does fire for this, so we hook
+  // it too, wherever it's available.
+  if (window.visualViewport){
+    window.visualViewport.addEventListener('resize', fitBoardToViewport);
+    window.visualViewport.addEventListener('scroll', fitBoardToViewport);
   }
 
   const rejoined = await tryRejoin();

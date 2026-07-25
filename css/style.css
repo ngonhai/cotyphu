@@ -285,6 +285,17 @@ select option{ background: var(--bg-2); color: var(--ink); }
     linear-gradient(160deg, var(--felt) 0%, var(--felt-2) 100%);
   perspective: 2000px;
 }
+/* Belt-and-suspenders against "centered content that overflows becomes partly
+   unreachable": with plain center alignment inside a scrollable box, browsers
+   only let you scroll to the overflow on one side, and the rest is permanently
+   clipped — no amount of scrolling gets it back. The safe/unsafe keywords exist
+   specifically for this: "safe center" falls back to start-alignment the moment
+   content overflows, so nothing is ever behind an unreachable negative scroll
+   offset. This is on top of (not instead of) actually preventing overflow below —
+   it just means a stray pixel of drift is scrollable rather than a hard clip.
+   Older browsers that don't understand "safe center" simply ignore this line and
+   keep the plain "center" above, so this is a pure enhancement, never a regression. */
+.board-wrap{ align-items: safe center; justify-content: safe center; }
 
 /* This calc() is only the pre-JS fallback (first paint, or if JS fails to load) —
    fitBoardToViewport() in ui.js takes over immediately after and sets an exact pixel
@@ -301,6 +312,16 @@ select option{ background: var(--bg-2); color: var(--ink); }
   height: var(--board-h);
   aspect-ratio: 1 / 1;
   width: auto;
+  /* Hard backstop, independent of the --board-h calc() above or of JS:
+     whatever height this ends up with, #board is never allowed to render wider
+     or taller than the space #board-wrap actually has, at any zoom level. This
+     is what used to be missing — the old rules only ever *derived* width from
+     height, so if height ever came out larger than the available width (which
+     is exactly what happens when a dvh-based calc drifts out of sync with the
+     real viewport at some zoom level), the board would spill past its wrapper
+     with nothing left to stop it. */
+  max-width: 100%;
+  max-height: 100%;
   position: relative;
   /* This frame is intentionally NOT the element that tilts (see #board-grid below) —
      it just sizes and borders itself, so the gold frame's own edges are always exactly
