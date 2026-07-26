@@ -26,6 +26,13 @@ let state = null; // local mirror of the room, kept in sync via onValue
 let myName = '';
 const INCOME_TAX_RATE = 0.10;
 
+
+// Snapshot of values from the *previous* onValue tick, used only to detect
+// transitions (lobby→playing, inJail false→true, etc.) so sound effects play
+// exactly once per event, in sync for every connected client — not just the
+// client whose action caused the change.
+let prevStatusForSound = null;
+let prevJailForSound = {};
 // ---------- 2. Firebase read/write helpers ----------
 
 function roomRef(path){ return db.ref('rooms/' + ROOM_ID + (path ? '/' + path : '')); }
@@ -35,6 +42,8 @@ let activeRoomListenerRef = null;
 function subscribeRoom(){
   if (typeof prevMoneyByUid !== 'undefined') prevMoneyByUid = {};
   if (typeof moneyDeltaByUid !== 'undefined') moneyDeltaByUid = {};
+  prevStatusForSound = null;
+  prevJailForSound = {};
   unsubscribeRoom();
   activeRoomListenerRef = roomRef();
   activeRoomListenerRef.on('value', snap => {
@@ -56,7 +65,29 @@ function subscribeRoom(){
     }
     checkAfkTimeouts();
     renderAll();
+    try { detectSoundEvents(); } catch (e) { console.error('detectSoundEvents failed:', e);}
   });
+}
+
+
+// Compares this tick's state against the previous tick to fire sound effects
+// exactly once per real event, for every client (not just the one who caused it).
+// Add new sound triggers here following the same before/after comparison pattern.
+function detectSoundEvents(){
+  if (prevStatusForSound === 'lobby' && state.status === 'playing'){
+    playSound('gameStart');
+  }
+  prevStatusForSound = state.status;
+
+  if (state.players){
+    for (const uid in state.players){
+      const isJailedNow = !!state.players[uid].inJail;
+      const wasJailedBefore = prevJailForSound[uid];
+      if (wasJailedBefore === false && isJailedNow === true) playSound('jailIn');
+      if (wasJailedBefore === true && isJailedNow === false) playSound('jailOut');
+      prevJailForSound[uid] = isJailedNow;
+    }
+  }
 }
 
 // Detaches the live Firebase listener. Without this, a player who's left back to the
@@ -150,6 +181,26 @@ setInterval(() => { if (state && state.pendingAuction) resolveAuctionIfExpired()
 
 // ---------- 3. Game actions ----------
 
+const ROOM_EXPIRY_MS = 30 * 60 * 1000; 
+
+function isRoomExpired(room){
+   const now = Date.now();
+
+   if (room.status === 'ended' && room.endedAt && (now - room.endedAt > ROOM_EXPIRY_MS)){
+     return true;
+   }
+
+   const seats = [
+     ...Object.values(room.players || {}),
+     ...Object.values(room.spectators || {})
+   ];
+   if (seats.length > 0){
+     const allStale = seats.every(p => !p.connected && (!p.lastSeen || now - p.lastSeen > ROOM_EXPIRY_MS));
+     if (allStale) return true;
+   }
+   return false;
+ }
+
 async function createRoom(name, maxPlayers, startingMoney){
   ROOM_ID = roomCode();
   myName = name;
@@ -190,6 +241,14 @@ async function joinRoom(code, name){
   if (!snap.exists()){ showToast("Không có phòng như vậy nhé."); ROOM_ID = null; return false; }
   const room = snap.val();
 
+  if (isRoomExpired(room)){
+     await roomRef().remove();
+     showToast("Phòng đã hết hạn và bị xóa.");
+     ROOM_ID = null;
+     return false;
+   }
+
+  // If this browser (MY_UID persists in localStorage, so it survives a closed/
   // If this browser (MY_UID persists in localStorage, so it survives a closed/
   // reopened tab) already has a seat in this room, this is a RECONNECT — recognized
   // regardless of the room's current status — not a new join. Handles the case where
@@ -244,6 +303,13 @@ async function tryRejoin(){
   const snap = await db.ref('rooms/' + hash).get();
   if (!snap.exists()) return false;
   const room = snap.val();
+
+  if (isRoomExpired(room)){
+     await db.ref('rooms/' + hash).remove();
+     location.hash = '';
+     return false;
+   }
+
   if (room.players && room.players[MY_UID]){
     ROOM_ID = hash;
     myName = room.players[MY_UID].name;
@@ -297,6 +363,8 @@ async function rollDice(){
   if (!isMyTurn() || state.turnPhase !== 'roll') return;
   if (state.players[MY_UID].money < 0) return; // must clear debt (sell/mortgage/bankrupt) first
 
+  playSound('diceRoll'); //sound
+
   const d1 = 1 + Math.floor(Math.random()*6);
   const d2 = 1 + Math.floor(Math.random()*6);
   const isDouble = d1 === d2;
@@ -318,7 +386,7 @@ async function rollDice(){
   setTimeout(async () => {
     await roomRef().update({ dice: [d1,d2], rolling: null, moveHop: null });
     if (tripleDoubles){
-      await sendToJail(MY_UID, 'gieo xúc sắc quá khéo');
+      await sendToJail(MY_UID, 'gieo xúc xắc quá khéo');
       await roomRef('doublesStreak').set(0);
       await endTurn();
       return;
@@ -336,7 +404,7 @@ async function finishAction(uid){
   if (player.bankrupt) return;
   if ((fresh.doublesStreak||0) > 0 && !player.inJail){
     await roomRef('turnPhase').set('roll');
-    log(`${player.name} gieo xúc sắc đôi -> Thêm lượt!`);
+    log(`${player.name} gieo xúc xắc đôi -> Thêm lượt!`);
   } else {
     await roomRef('turnPhase').set('end');
   }
@@ -353,7 +421,7 @@ async function movePlayer(uid, steps){
     updates[`players/${uid}/money`] = player.money + 200;
   }
   await roomRef().update(updates);
-  if (passedGo) log(`${player.name} đi qua GO và dược nhận $200.`);
+  if (passedGo) log(`${player.name} đi qua Quê Gốc và dược nhận $200.`);
   await resolveTile(uid, newPos);
 }
 
@@ -367,7 +435,7 @@ async function resolveTile(uid, tileIndex){
       const bonus = Number(room.settings.goBonusAmount);
       const amt = Number.isFinite(bonus) && bonus >= 0 ? bonus : 200;
       await roomRef(`players/${uid}/money`).set(player.money + amt);
-      log(`${player.name} giẫm đúng vào GO nên nhận thêm $${amt} bố thí!`);
+      log(`${player.name} nhảy chính xác vào Quê Gốc nên nhận thêm $${amt} bố thí!`);
     } else {
       log(`${player.name} đến ô ${tile.name}.`);
     }
@@ -418,7 +486,7 @@ async function resolveTile(uid, tileIndex){
       const owed = (tile.taxKind === 'income')
         ? Math.round(player.money * INCOME_TAX_RATE)
         : tile.amount;
-      log(`${player.name} giẫm vào ô ${tile.name} và trả $${owed}.`);
+      log(`${player.name} nhảy vào ô ${tile.name} và trả $${owed}.`);
       const inDebt = await chargePlayer(uid, owed, null);
       if (!inDebt) await finishAction(uid);
       return;
@@ -437,7 +505,7 @@ async function resolveTile(uid, tileIndex){
       return;
     }
     if (!pdata.owner){
-      log(`${player.name} giẫm ô ${tile.name} (vô chủ, giá $${tile.price}).`);
+      log(`${player.name} nhảy vào ô ${tile.name} (chưa chủ, giá $${tile.price}).`);
       await roomRef('pendingBuy').set({ tileIndex, uid });
       await roomRef('turnPhase').set('action');
     } else if (pdata.owner === uid){
@@ -632,6 +700,7 @@ async function handleBankruptcy(uid, creditorUid, opts){
   if (stillIn.length <= 1){
     updates['status'] = 'ended';
     updates['winner'] = stillIn[0] || null;
+    updates['endedAt'] = firebase.database.ServerValue.TIMESTAMP;
   } else if (room.currentTurn === uid){
     // the player who just went bankrupt was mid-turn: hand play to the next surviving player
     const oldIdx = room.turnOrder.indexOf(uid);
@@ -678,7 +747,7 @@ async function drawCard(uid, deckType){
   const card = pickWeightedCard(deck);
   const room = (await roomRef().get()).val();
   const player = room.players[uid];
-  log(`${player.name} drew a ${deckType==='chance'?'Chance':'Community Chest'} card: "${card.text}"`);
+  log(`${player.name} chọn ${deckType==='chance'?'Cơ Hội':'Túi Mù'} nội dụng: "${card.text}"`);
   if (uid === MY_UID && typeof showToast === 'function') showToast(card.text);
 
   switch(card.action){
@@ -796,6 +865,7 @@ async function buyProperty(){
   const tile = BOARD[tileIndex];
   const player = state.players[MY_UID];
   if (player.money < tile.price) { showToast("Không đủ money."); return; }
+  playSound('buyProperty');
   await roomRef().update({
     [`properties/${tileIndex}/owner`]: MY_UID,
     [`players/${MY_UID}/money`]: player.money - tile.price,
@@ -968,7 +1038,7 @@ async function declineRailroadAuction(){
       updates[`properties/${tileIndex}/auctionPrice`] = 0;
       updates[`properties/${tileIndex}/auctionHighBidder`] = null;
       updates[`properties/${tileIndex}/auctionDeclined`] = {};
-      log(`${room.players[highBidder].name} wins ${tile.name} for $${pdata.auctionPrice} — everyone else passed.`);
+      log(`${room.players[highBidder].name} bú ${tile.name} với giá $${pdata.auctionPrice} — do không còn ai đấu giá.`);
     } else {
       // Nobody ever bid — reset the pass list so it can be auctioned fresh next time.
       updates[`properties/${tileIndex}/auctionDeclined`] = {};
@@ -1031,12 +1101,12 @@ async function rollForJail(){
     if (isDouble && attempt < 3){
       // 1st/2nd attempt doubles: freed, but stays put this turn.
       await roomRef().update({ [`players/${MY_UID}/inJail`]: false, [`players/${MY_UID}/jailTurns`]: 0 });
-      log(`${me.name} gieo xúc sắc đôi (${d1}-${d2}) nên ra tù.`);
+      log(`${me.name} gieo xúc xắc đôi (${d1}-${d2}) nên ra tù.`);
       await roomRef('turnPhase').set('end');
     } else if (isDouble){
       // 3rd attempt doubles: freed AND moves immediately, same as the classic rule.
       await roomRef().update({ [`players/${MY_UID}/inJail`]: false, [`players/${MY_UID}/jailTurns`]: 0 });
-      log(`${me.name} gieo xúc sắc đôi (${d1}-${d2}) vào lần thứ 3 nên ra tù và có thể đi!`);
+      log(`${me.name} gieo xúc xắc đôi (${d1}-${d2}) vào lần thứ 3 nên ra tù và có thể đi!`);
       await movePlayer(MY_UID, steps);
     } else if (attempt >= 3){
       // 3rd attempt, no doubles: forced out at half the usual fine, and still stays put.
@@ -1046,7 +1116,7 @@ async function rollForJail(){
         releaseUpdates['freeParkingPot'] = (state.freeParkingPot||0) + fine;
       }
       await roomRef().update(releaseUpdates);
-      log(`${me.name} không gieo xúc sắc đôi lần nào, buộc phải trả $${fine} để ra tù.`);
+      log(`${me.name} không gieo xúc xắc đôi lần nào, buộc phải trả $${fine} để ra tù.`);
       await roomRef('turnPhase').set('end');
     } else {
       // 1st/2nd attempt, no doubles: still stuck, try again next turn.

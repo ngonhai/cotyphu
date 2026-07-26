@@ -68,6 +68,13 @@ button{ font-family:inherit; }
 
 .screen{ display:none; min-height:100vh; }
 .screen.active{ display:flex; flex-direction:column; }
+#screen-loading{ align-items:center; justify-content:center; }
+.loading-spinner{
+  width:40px; height:40px; border-radius:50%;
+  border:4px solid rgba(0,0,0,.12); border-top-color:var(--gold, #d4a017);
+  animation: loading-spin .8s linear infinite;
+}
+@keyframes loading-spin{ to{ transform:rotate(360deg); } }
 
 /* ---------- Glass panel base ---------- */
 .lobby-card, .waiting-card, .modal-card{
@@ -422,6 +429,7 @@ select option{ background: var(--bg-2); color: var(--ink); }
      keeps text from ballooning relative to its card when the page is zoomed in. */
   font-size: clamp(6px, 1.15cqw, 11px);
   cursor: default; line-height:1.2; overflow: visible;
+  user-select: none;
   box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 2px 5px rgba(0,0,0,.28);
   transition: transform .12s ease, box-shadow .12s ease;
 }
@@ -430,7 +438,7 @@ select option{ background: var(--bg-2); color: var(--ink); }
   transform: translateY(-2px) scale(1.04); z-index:6;
   box-shadow: 0 1px 0 rgba(255,255,255,.7) inset, 0 10px 18px rgba(0,0,0,.4);
 }
-.tile > *{ position:relative; z-index:1; } /* keep text/houses above the glass overlay */
+.tile > *{ position:relative; z-index:1; pointer-events: none; } /* keep text/houses above the glass overlay */
 .tile-name{ font-size: 1em; overflow-wrap: anywhere; }
 .tile-price{ font-family:'IBM Plex Mono',monospace; font-size: .86em; color: #6b6478; margin-top:2px; font-weight:700; }
 .tile.mortgaged{ opacity:.5; }

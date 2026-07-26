@@ -37,26 +37,26 @@ const LOG_MESSAGES = {
   // declineBuy(): player didn't have enough cash to buy, even if they wanted to.
   declineBuy_cantAfford: [
     "{name} đéo có tiền nên không mua được {tile}",
-    "{name} chỉ còn biết nhìn {tile} tiếc nuối",
-    "{name} để giành ô {tile} cho lần sau",
-    "{name} để giành ô {tile} cho người khác",
-    "{tile} ngoài tâm với của {name}"
+    "{name} nhìn {tile} tiếc nuối",
+    "{name} để giành {tile} cho lần sau",
+    "{name} để giành {tile} cho người khác",
+    "{tile} ngoài tầm với của {name}"
   ],
 
   // resolveTile(): rent that leaves the payer in real trouble (see the bigHit
   // check next to where this is used in game.js).
   rent_bigHit: [
     "{name} trả ${amount} cho {owner} trên đất {tile} — đau thì vl",
-    "Đm — {name} phải trả {owner} ${amount} tiền thuê ô {tile}",
-    "{name} ngậm ngùi trả ${amount} trên ô {tile}, cái mà {owner} sở hữu",
-    "{name} choáng váng sau khi thanh toán {owner} ${amount} trên ô {tile}"
+    "Đm — {name} phải trả {owner} ${amount} tiền thăm quan {tile}",
+    "{name} ngậm ngùi trả ${amount} khi đến {tile}, cái mà {owner} sở hữu",
+    "{name} đã khóc sau khi trả {owner} ${amount} ở {tile}"
   ],
 
   // resolveTile(): an ordinary, easily-affordable rent payment.
   rent_minor: [
-    "{name} bố thí ${amount} cho {owner} trên ô {tile} rẻ mạt",
-    "{name} lo liệu ${amount} khi giẫm {tile} ổn thỏa.",
-    " ${amount} đéo thấm thía {name} khi giẫm {tile}, còn {owner} thì húp."
+    "{name} bố thí ${amount} cho {owner} khi đến {tile}",
+    "{name} lo liệu ổn thỏa ${amount} khi giẫm {tile}.",
+    " ${amount} đéo thấm vào đâu tiền {name} khi giẫm {tile}, và {owner} thì húp."
   ],
 
   // sendToJail(): reason is whatever string was passed to sendToJail(uid, reason).

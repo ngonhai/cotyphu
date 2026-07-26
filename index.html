@@ -7,12 +7,17 @@
 <link rel="icon" href="icon.ico">
 <meta property="og:image" content="https://ngonhai.github.io/cotyphu/logo.png">
 <meta property="og:url" content="https://ngonhai.github.io/cotyphu/">
-<link rel="stylesheet" href="css/style.css?v=20260725">
+<link rel="stylesheet" href="css/style.css?v=20260727">
 </head>
 <body>
 
+  <!-- ============ LOADING ============ -->
+  <section id="screen-loading" class="screen active">
+    <div class="loading-spinner"></div>
+  </section>
+
   <!-- ============ LOBBY ============ -->
-  <section id="screen-lobby" class="screen active">
+  <section id="screen-lobby" class="screen">
     <div class="lobby-card">
       <div class="lobby-dice">⚀ ⚅</div>
       <h1 class="lobby-title">Cờ Bần Nông</h1>
@@ -44,7 +49,7 @@
           <span class="numeric-prefix">$</span>
           <input type="number" id="input-starting-cash" min="0" step="50" value="1000" placeholder="Custom amount">
         </div>
-        <button class="btn btn-block" id="btn-create-room">Tạo Phòng</button>
+        <button class="btn btn-block sfx-hover" id="btn-create-room">Tạo Phòng</button>
       </div>
 
       <div class="tab-panel" id="tab-join">
@@ -52,7 +57,7 @@
         <input type="text" id="input-name-join" maxlength="16" placeholder="e.g. Heist">
         <label for="input-room-code">Code Phòng</label>
         <input type="text" id="input-room-code" maxlength="5" placeholder="e.g. K7QXP" style="text-transform:uppercase">
-        <button class="btn btn-block" id="btn-join-room">Tham Gia</button>
+        <button class="btn btn-block sfx-hover" id="btn-join-room">Tham Gia</button>
       </div>
     </div>
   </section>
@@ -93,7 +98,7 @@
         <label class="rule-row">
           <input type="checkbox" id="rule-rentinjail">
           <span>
-            <strong>Nhận tiền phí khi ở trong tù</strong>
+            <strong>Vẫn nhận tiền phí khi ở trong tù</strong>
             <small>Bật (standard rule): Phí vẫn thu, dù đi tù.  Tắt: Đi tù là đi tù, không có phí gì hết.</small>
           </span>
         </label>
@@ -192,11 +197,12 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-  <script src="js/firebase-config.js?v=20260725"></script>
-  <script src="js/board-data.js?v=20260725"></script>
-  <script src="js/log-messages.js?v=20260725"></script>
-  <script src="js/game.js?v=20260725"></script>
-  <script src="js/ui.js?v=20260725"></script>
+  <script src="js/firebase-config.js?v=20260727"></script>
+  <script src="js/board-data.js?v=20260727"></script>
+  <script src="js/log-messages.js?v=20260727"></script>
+  <script src="js/sounds.js?v=20260727"></script>
+  <script src="js/game.js?v=20260727"></script>
+  <script src="js/ui.js?v=20260727"></script>
   <script>
     // simple tab switching on the lobby screen
     document.querySelectorAll('.tab-btn').forEach(btn => {

@@ -107,7 +107,7 @@ function maybeShowWinnerModal(){
     <div class="modal-card winner-modal">
       <div class="winner-modal-emoji">🏆🎉</div>
       <h2>${escapeHtml(state.players[state.winner].name)} wins!</h2>
-      <p>${iWon ? "Congratulations — you're the last one standing!" : 'Everyone else went bankrupt — thanks for playing!'}</p>
+      <p>${iWon ? "Chuc mung thang lon — ban da thang!" : 'Toang cả rồi — thanks for playing!'}</p>
       <div class="modal-actions">
         <button class="btn" id="winner-modal-close">${iWon ? 'Nice!' : 'Close'}</button>
       </div>
@@ -133,7 +133,7 @@ function renderWaitingRoom(){
       kickBtn.type = 'button';
       kickBtn.textContent = 'Kick';
       kickBtn.onclick = () => {
-        if (confirm(`Kick ${p.name} from the room?`)) kickPlayer(uid);
+        if (confirm(`Đá ${p.name} khỏi phòng?`)) kickPlayer(uid);
       };
       li.appendChild(kickBtn);
     }
@@ -296,7 +296,7 @@ function renderBoard(){
     center.id = 'board-center';
     center.style.gridRow = '2 / 11';
     center.style.gridColumn = '2 / 11';
-    center.innerHTML = '<div class="board-title">Boardwalk<br>Night</div>';
+    center.innerHTML = '<div class="board-title">Cờ<br>Bần Nông</div>';
     board.appendChild(center);
   }
 
@@ -508,7 +508,7 @@ function renderPlayerPanel(){
     card.className = 'player-card' + (state.currentTurn===uid ? ' active-turn' : '') + (p.bankrupt ? ' bankrupt' : '') + (inDebt ? ' in-debt' : '');
     card.querySelector('.token-dot').style.background = p.color;
     card.querySelector('.player-name').innerHTML =
-      `${escapeHtml(p.name)}${uid===MY_UID?' (you)':''}${p.inJail?' 🚔':''}${p.bankrupt ? ' <span class="status-badge bankrupt-badge">Bankrupt</span>' : ''}`;
+      `${escapeHtml(p.name)}${uid===MY_UID?' (bản thân)':''}${p.inJail?' 🚔':''}${p.bankrupt ? ' <span class="status-badge bankrupt-badge">Bankrupt</span>' : ''}`;
 
     // Host-only Kick button, hidden for the host's own card and for anyone already out.
     let kickBtn = card.querySelector('.btn-kick');
@@ -563,7 +563,7 @@ function renderPlayerPanel(){
   let pot = wrap.querySelector('.jackpot-line');
   if (state.settings?.freeParkingJackpot){
     if (!pot){ pot = document.createElement('div'); pot.className = 'jackpot-line'; wrap.appendChild(pot); }
-    pot.textContent = `🅿️ Free Parking pot: $${state.freeParkingPot||0}`;
+    pot.textContent = `🅿️ Quỹ Nghỉ Ngơi: $${state.freeParkingPot||0}`;
     wrap.appendChild(pot); // keep it pinned after the (possibly reordered) player cards
   } else if (pot){
     pot.remove();
@@ -637,26 +637,26 @@ function renderActionBar(){
   // rather than immediately rolling again in the turn that jailed them.
   if (me.inJail && state.turnPhase === 'roll'){
     const fine = state.settings?.jailFineAmount ?? 50;
-    bar.appendChild(btn(`Pay $${fine} to get out`, payJailFine, me.money < fine));
-    bar.appendChild(btn(`Use Jail-Free Card (${me.jailFreeCards||0})`, useJailCard, (me.jailFreeCards||0) < 1));
-    bar.appendChild(btn('Roll for doubles', rollForJail));
+    bar.appendChild(btn(`Trả $${fine} để ra tù`, payJailFine, me.money < fine));
+    bar.appendChild(btn(`Sử dụng Jail-Free Card (${me.jailFreeCards||0})`, useJailCard, (me.jailFreeCards||0) < 1));
+    bar.appendChild(btn('Gieo xúc đôi', rollForJail));
     return;
   }
 
   if (state.turnPhase === 'roll'){
-    bar.appendChild(btn('🎲 Roll Dice', rollDice));
+    bar.appendChild(btn('🎲 Gieo Xúc Xắc', rollDice));
   } else if (state.turnPhase === 'action' && state.pendingBuy && state.pendingBuy.uid === MY_UID){
     const tile = BOARD[state.pendingBuy.tileIndex];
-    bar.appendChild(btn(`Buy ${tile.name} — $${tile.price}`, buyProperty, me.money < tile.price));
+    bar.appendChild(btn(`Mua ${tile.name} — $${tile.price}`, buyProperty, me.money < tile.price));
     if (state.settings?.auctionEnabled){
-      bar.appendChild(btn('Auction', startPropertyAuction, false, true));
+      bar.appendChild(btn('Đấu Giá', startPropertyAuction, false, true));
     } else {
-      bar.appendChild(btn('Decline', declineBuy, false, true));
+      bar.appendChild(btn('Đéo Muốn', declineBuy, false, true));
     }
   } else if (state.turnPhase === 'action' && state.pendingRailAuction && state.pendingRailAuction.uid === MY_UID){
     renderRailAuctionChoiceBar(bar);
   } else if (state.turnPhase === 'end'){
-    bar.appendChild(btn('End Turn', endTurn));
+    bar.appendChild(btn('Kết thúc lượt', endTurn));
   }
 }
 
@@ -666,12 +666,12 @@ function renderDebtBar(bar, me){
     : 'Sell houses/hotels back to the bank';
   const banner = document.createElement('div');
   banner.className = 'debt-banner';
-  banner.innerHTML = `⚠️ You're short <strong>$${Math.abs(me.money)}</strong>. ${escapeHtml(raiseCashHint)} to cover it, or declare bankruptcy.`;
+  banner.innerHTML = `⚠️ Thiếu <strong>$${Math.abs(me.money)}</strong>. ${escapeHtml(raiseCashHint)} để bù vào, hoặc phá sản.`;
   bar.appendChild(banner);
   const row = document.createElement('div');
   row.className = 'debt-actions';
-  row.appendChild(btn('Manage My Properties', openPropertiesDrawer));
-  row.appendChild(btn('Declare Bankruptcy', confirmBankruptcy, false, true));
+  row.appendChild(btn('Quản Lý Tài Sản', openPropertiesDrawer));
+  row.appendChild(btn('Tuyên Bố Phá Sản', confirmBankruptcy, false, true));
   bar.appendChild(row);
 }
 
@@ -803,7 +803,7 @@ function renderLog(){
 function renderWinnerBanner(){
   const el = document.getElementById('winner-banner');
   if (state.winner){
-    el.textContent = `🏆 ${state.players[state.winner].name} wins the game!`;
+    el.textContent = `🏆 ${state.players[state.winner].name} thắng ván này!`;
   } else {
     el.textContent = `Game over.`;
   }
@@ -840,7 +840,7 @@ function openPropertyDetail(tileIndex){
   const owner = pdata.owner ? state.players[pdata.owner].name : 'Unowned';
   let rentLines = '';
   if (tile.type === 'property'){
-    const labels = ['Base (or full set: double)','1 house','2 houses','3 houses','4 houses','Hotel'];
+    const labels = ['Phí khởi điểm (hoặc gấp đôi nếu full set màu)','1 Nhà','2 Nhà','3 Nhà','4 Nhà','Khách Sạn'];
     rentLines = tile.rent.map((r,i) => `<div class="rent-row">${labels[i]}<span>$${i===0 ? r+' / '+(r*2) : r}</span></div>`).join('');
   } else if (tile.type === 'railroad' && state.settings?.auctionRailwaysEnabled){
     const paid = pdata.purchasePrice;
@@ -861,23 +861,23 @@ function openPropertyDetail(tileIndex){
     const buildCheck = canBuildOn(tileIndex);
     const sellBlocked = cashRuleMode === 'mortgage';
     controls += `<div class="modal-actions">
-      <button class="btn" id="mbtn-build" ${buildCheck.ok ? '' : 'disabled title="'+escapeHtml(buildCheck.reason)+'"'}>Build (${pdata.houses>=4?'Hotel':'House'} — $${tile.house})</button>
-      <button class="btn btn-secondary" id="mbtn-sell" ${(pdata.houses<=0 || sellBlocked)?'disabled':''} ${sellBlocked?'title="House rule: Mortgage Mode is on — sell is off."':''}>Sell house (+$${Math.floor(tile.house/2)})</button>
+      <button class="btn" id="mbtn-build" ${buildCheck.ok ? '' : 'disabled title="'+escapeHtml(buildCheck.reason)+'"'}>Nâng ${pdata.houses>=4?'Khách Sạn':'Nhà'} (— $${tile.house})</button>
+      <button class="btn btn-secondary" id="mbtn-sell" ${(pdata.houses<=0 || sellBlocked)?'disabled':''} ${sellBlocked?'title="House rule: Mortgage Mode is on — sell is off."':''}>Hạ Nhà (+$${Math.floor(tile.house/2)})</button>
     </div>
     ${!buildCheck.ok ? `<p class="muted" style="font-size:.78rem;">${escapeHtml(buildCheck.reason)}</p>` : ''}
-    ${sellBlocked ? `<p class="muted" style="font-size:.78rem;">House rule: Mortgage Mode is on, so houses can't be sold back — mortgage the property instead.</p>` : ''}`;
+    ${sellBlocked ? `<p class="muted" style="font-size:.78rem;">Thế chấp tài sản, nghĩa là không thể bán — mà chỉ có thể thế chấp.</p>` : ''}`;
   }
   if (isMine && pdata.houses===0 && isMyTurn()){
     const mortgageBlocked = cashRuleMode === 'sell' && !pdata.mortgaged;
     controls += `<div class="modal-actions">
-      <button class="btn btn-secondary" id="mbtn-mortgage" ${mortgageBlocked?'disabled':''} ${mortgageBlocked?'title="House rule: Sell Mode is on — mortgaging is off."':''}>${pdata.mortgaged ? `Pay off mortgage (-$${Math.floor(tile.price/2*1.1)})` : `Mortgage (+$${Math.floor(tile.price/2)})`}</button>
+      <button class="btn btn-secondary" id="mbtn-mortgage" ${mortgageBlocked?'disabled':''} ${mortgageBlocked?'title="House rule: Sell Mode is on — mortgaging is off."':''}>${pdata.mortgaged ? `Pay off mortgage (-$${Math.floor(tile.price/2*1.1)})` : `Thế Chấp (+$${Math.floor(tile.price/2)})`}</button>
     </div>
-    ${mortgageBlocked ? `<p class="muted" style="font-size:.78rem;">House rule: Sell Mode is on, so properties can't be mortgaged — sell houses back to the bank instead.</p>` : ''}`;
+    ${mortgageBlocked ? `<p class="muted" style="font-size:.78rem;">Bán tài sản, nghĩa là không thể thế chấp — mà chỉ có thể bán.</p>` : ''}`;
   }
 
   const levelBadge = tile.type === 'property'
     ? `<div class="level-badge level-${pdata.houses}">${
-        pdata.houses === 0 ? 'No buildings yet' :
+        pdata.houses === 0 ? 'Chưa có BĐS' :
         pdata.houses === 5 ? '🏨 Hotel — max level' :
         `🏠 Level ${pdata.houses} of 4`
       }</div>`
@@ -910,9 +910,9 @@ function openPropertiesDrawer(){
   modal.innerHTML = `
     <div class="modal-card">
       <button class="modal-close" id="modal-close">✕</button>
-      <h3>My Properties</h3>
+      <h3>Tài sản của Tui</h3>
       <div class="my-props-list">
-        ${mine.length===0 ? "<p class=\"muted\">You don't own any properties yet.</p>" : mine.map(t => `
+        ${mine.length===0 ? "<p class=\"muted\">Chưa có gì... Buồn quá!!!</p>" : mine.map(t => `
           <div class="my-prop-row" data-i="${t.i}">
             <span class="swatch group-${t.group||''}"></span>
             ${escapeHtml(t.name)} ${state.properties[t.i].mortgaged ? '<em>(mortgaged)</em>' : ''}
@@ -934,7 +934,7 @@ function describeTradeSide(side){
   if (side.cash) parts.push(`$${side.cash}`);
   (side.properties||[]).forEach(idx => parts.push(BOARD[idx].name));
   if (side.jailFreeCards) parts.push(`${side.jailFreeCards} Jail-Free card${side.jailFreeCards>1?'s':''}`);
-  return parts.length ? parts.join(', ') : 'nothing';
+  return parts.length ? parts.join(', ') : 'chẳng có gì';
 }
 
 function openTradeCenter(){
@@ -944,12 +944,12 @@ function openTradeCenter(){
       <button class="modal-close" id="modal-close">✕</button>
       <h3>Trades</h3>
       <div class="trade-tabs">
-        <button class="trade-tab-btn active" data-tab="incoming">Incoming (${pendingIncomingTrades().length})</button>
-        <button class="trade-tab-btn" data-tab="outgoing">Sent (${pendingOutgoingTrades().length})</button>
+        <button class="trade-tab-btn active" data-tab="incoming">Đang chờ (${pendingIncomingTrades().length})</button>
+        <button class="trade-tab-btn" data-tab="outgoing">Đã gửi đi (${pendingOutgoingTrades().length})</button>
       </div>
       <div class="trade-tab-panel active" id="trade-tab-incoming"></div>
       <div class="trade-tab-panel" id="trade-tab-outgoing"></div>
-      <button class="btn btn-block" id="btn-new-trade" style="margin-top:14px;">+ Propose a Trade</button>
+      <button class="btn btn-block" id="btn-new-trade" style="margin-top:14px;">+ Tạo một giao dịch</button>
     </div>`;
   modal.classList.add('show');
   document.getElementById('modal-close').onclick = () => modal.classList.remove('show');
@@ -968,12 +968,12 @@ function renderIncomingTrades(){
   const wrap = document.getElementById('trade-tab-incoming');
   if (!wrap) return;
   const trades = pendingIncomingTrades();
-  if (trades.length === 0){ wrap.innerHTML = '<p class="muted">No incoming offers right now.</p>'; return; }
+  if (trades.length === 0){ wrap.innerHTML = '<p class="muted">Chưa có Trade nào được gửi đến bạn.</p>'; return; }
   wrap.innerHTML = trades.map(t => `
     <div class="trade-card" data-id="${t.id}">
       <div class="trade-parties">${escapeHtml(state.players[t.fromUid].name)} → you</div>
-      <div class="trade-side"><span class="label">They give:</span> ${escapeHtml(describeTradeSide(t.give))}</div>
-      <div class="trade-side"><span class="label">They want:</span> ${escapeHtml(describeTradeSide(t.receive))}</div>
+      <div class="trade-side"><span class="label">Họ trao đổi:</span> ${escapeHtml(describeTradeSide(t.give))}</div>
+      <div class="trade-side"><span class="label">Họ muốn:</span> ${escapeHtml(describeTradeSide(t.receive))}</div>
       ${t.note ? `<div class="trade-note">"${escapeHtml(t.note)}"</div>` : ''}
       <div class="trade-actions">
         <button class="btn" data-act="accept">Accept</button>
@@ -996,14 +996,14 @@ function renderOutgoingTrades(){
   const wrap = document.getElementById('trade-tab-outgoing');
   if (!wrap) return;
   const trades = Object.values(state.trades||{}).filter(t => t.fromUid === MY_UID).sort((a,b)=>b.createdAt-a.createdAt).slice(0,15);
-  if (trades.length === 0){ wrap.innerHTML = '<p class="muted">You haven\'t sent any trade offers yet.</p>'; return; }
+  if (trades.length === 0){ wrap.innerHTML = '<p class="muted">Bạn chưa tạo Trade với ai cả.</p>'; return; }
   wrap.innerHTML = trades.map(t => `
     <div class="trade-card" data-id="${t.id}">
       <div class="trade-parties">You → ${escapeHtml(state.players[t.toUid].name)}
         ${t.status !== 'pending' ? `<span class="trade-status-tag ${t.status}">${t.status}</span>` : ''}
       </div>
-      <div class="trade-side"><span class="label">You give:</span> ${escapeHtml(describeTradeSide(t.give))}</div>
-      <div class="trade-side"><span class="label">You want:</span> ${escapeHtml(describeTradeSide(t.receive))}</div>
+      <div class="trade-side"><span class="label">Bạn sẽ đưa:</span> ${escapeHtml(describeTradeSide(t.give))}</div>
+      <div class="trade-side"><span class="label">Bạn mong muốn:</span> ${escapeHtml(describeTradeSide(t.receive))}</div>
       ${t.status === 'pending' ? `<div class="trade-actions"><button class="btn btn-secondary" data-act="cancel">Cancel offer</button></div>` : ''}
     </div>`).join('');
   wrap.querySelectorAll('[data-act="cancel"]').forEach(btn => {
@@ -1040,27 +1040,27 @@ function openTradeBuilder(prefill){
 
       <div class="trade-cash-row">
         <div>
-          <label>Jail-Free cards to give</label>
+          <label>Thẻ Jail-Free sẵn có</label>
           <input type="number" min="0" inputmode="numeric" id="tb-give-jail" value="${prefill?.give?.jailFreeCards||0}">
         </div>
         <div>
-          <label>Jail-Free cards to request</label>
+          <label>Thẻ Jail-Free muốn có</label>
           <input type="number" min="0" inputmode="numeric" id="tb-receive-jail" value="${prefill?.receive?.jailFreeCards||0}">
         </div>
       </div>
 
-      <label>Your properties to give</label>
+      <label>Tài sản của bạn</label>
       <div class="prop-checklist" id="tb-give-props"></div>
 
-      <label>Their properties to request</label>
+      <label>Tài sản của họ</label>
       <div class="prop-checklist" id="tb-receive-props"></div>
 
-      <label>Note (optional)</label>
-      <input type="text" id="tb-note" maxlength="80" value="${escapeHtml(prefill?.note||'')}" placeholder="e.g. throwing in cash to sweeten it">
+      <label>Lời nhắn (sau tiếng *Beep*)</label>
+      <input type="text" id="tb-note" maxlength="80" value="${escapeHtml(prefill?.note||'')}" placeholder="e.g. Đêm nay em tuyệt lắm">
 
       <div class="modal-actions">
-        <button class="btn" id="tb-submit">Send Offer</button>
-        <button class="btn btn-secondary" id="tb-cancel">Cancel</button>
+        <button class="btn" id="tb-submit">Gửi Đi</button>
+        <button class="btn btn-secondary" id="tb-cancel">Hủy bỏ</button>
       </div>
     </div>`;
   modal.classList.add('show');
@@ -1076,10 +1076,10 @@ function openTradeBuilder(prefill){
     const preReceive = new Set(prefill?.receive?.properties||[]);
     document.getElementById('tb-give-props').innerHTML = myProps.length ? myProps.map(t => `
       <label class="prop-check-row"><input type="checkbox" value="${t.i}" ${preGive.has(t.i)?'checked':''}> ${escapeHtml(t.name)}</label>`).join('')
-      : '<p class="muted" style="font-size:.8rem;">You have no tradable properties (houses must be sold first).</p>';
+      : '<p class="muted" style="font-size:.8rem;">Bạn chưa có tài sản nào (cần tháo dỡ hết BĐS trên tài sản trước).</p>';
     document.getElementById('tb-receive-props').innerHTML = theirProps.length ? theirProps.map(t => `
       <label class="prop-check-row"><input type="checkbox" value="${t.i}" ${preReceive.has(t.i)?'checked':''}> ${escapeHtml(t.name)}</label>`).join('')
-      : '<p class="muted" style="font-size:.8rem;">They have no tradable properties right now.</p>';
+      : '<p class="muted" style="font-size:.8rem;">Họ chưa có tài sản nào cho bạn đâu</p>';
 
     const myJail = state.players[MY_UID].jailFreeCards||0;
     const theirJail = state.players[target].jailFreeCards||0;
@@ -1149,7 +1149,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.visualViewport.addEventListener('scroll', fitBoardToViewport);
   }
 
-  const rejoined = await tryRejoin();
+  let rejoined = false;
+  try { rejoined = await tryRejoin(); }
+  catch (e) { console.error('tryRejoin failed:', e); }
   if (!rejoined) showScreen('lobby');
 
   document.getElementById('btn-create-room').addEventListener('click', () => {
@@ -1157,7 +1159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const maxPlayers = parseInt(document.getElementById('select-max-players').value);
     const rawStartingCash = parseInt(document.getElementById('input-starting-cash').value);
     const startingCash = (Number.isFinite(rawStartingCash) && rawStartingCash >= 0) ? rawStartingCash : 1500;
-    if (!name){ showToast('Enter your name first.'); return; }
+    if (!name){ showToast('Tên thì đéo nhập.'); return; }
     createRoom(name, maxPlayers, startingCash);
   });
 
@@ -1187,14 +1189,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-properties').addEventListener('click', openPropertiesDrawer);
   document.getElementById('btn-trades').addEventListener('click', openTradeCenter);
   document.getElementById('btn-bankrupt').addEventListener('click', () => {
-    if (confirm("Declare bankruptcy? You'll hand over your properties and become a spectator for the rest of the game.")){
+    if (confirm("Tuyên bố phá sản hả? Nếu phá sản sẽ thành người xem của ván này.")){
       giveUpBankruptcy();
     }
   });
   document.getElementById('btn-leave-game').addEventListener('click', () => {
-    if (confirm("Leave this game? You'll be marked bankrupt and taken back to the lobby.")) leaveGame();
+    if (confirm("Bạn muốn rời game!?!")) leaveGame();
   });
   document.getElementById('modal').addEventListener('click', (e) => {
     if (e.target.id === 'modal') e.target.classList.remove('show');
   });
 });
+
+document.addEventListener('mouseenter', (e) => {
+  if (e.target.closest && e.target.classList.contains('sfx-hover')){
+    playSound('buttonHover');
+  }
+}, true); // capture:true vì mouseenter không bubble lên được
