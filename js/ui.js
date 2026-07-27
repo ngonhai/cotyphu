@@ -215,6 +215,12 @@ function renderWaitingRoom(){
   ruleJailVisitBonus.disabled = !isHost;
   document.getElementById('rule-jailvisitbonus').classList.toggle('disabled', !isHost);
   ruleJailVisitBonus.onchange = () => updateSetting('jailVisitBonusEnabled', ruleJailVisitBonus.checked);
+
+  const ruleChanceTeleport = document.getElementById('rule-chance-teleport-toggle');
+  ruleChanceTeleport.checked = !!settings.chanceTeleportEnabled;
+  ruleChanceTeleport.disabled = !isHost;
+  document.getElementById('rule-chance-teleport').classList.toggle('disabled', !isHost);
+  ruleChanceTeleport.onchange = () => updateSetting('chanceTeleportEnabled', ruleChanceTeleport.checked);
 }
 
 // ---------- Game board ----------
@@ -232,6 +238,7 @@ function renderGame(){
   renderBankruptButton();
   renderTradeButton();
   renderAuctionModal();
+  renderTileChoiceOverlay();
   refreshOpenTradeModalIfNeeded();
 }
 
@@ -309,22 +316,36 @@ function renderBoard(){
 
     if (pdata.owner){
       el.classList.add('owned');
-      el.style.setProperty('--owner-color', state.players[pdata.owner].color);
+      const ownerColor = state.players[pdata.owner].color;
+      el.style.setProperty('--owner-color', ownerColor);
+      // Owned tiles now wash the whole card in the owner's color, which can be
+      // dark or light depending on who owns it — so the tile text can't stay a
+      // fixed dark color. Pick near-black or near-white per owner based on the
+      // color's actual luminance, and use a slightly-softened version of that
+      // same choice for the price line, so both stay legible either way.
+      const textColor = readableTextColor(ownerColor);
+      el.style.setProperty('--owner-text', textColor);
+      el.style.setProperty('--owner-text-soft', textColor === '#ffffff' ? 'rgba(255,255,255,.82)' : 'rgba(36,31,46,.75)');
     } else {
       el.classList.remove('owned');
       el.style.removeProperty('--owner-color');
+      el.style.removeProperty('--owner-text');
+      el.style.removeProperty('--owner-text-soft');
     }
 
     const isMonopoly = tile.type === 'property' && pdata.owner && groupFullSetOwner(tile.group) === pdata.owner;
     el.classList.toggle('monopoly', !!isMonopoly);
 
-    let houseWrap = el.querySelector('.houses');
-    if (houseWrap) houseWrap.remove();
-    if (pdata.houses > 0){
-      houseWrap = document.createElement('div');
-      houseWrap.className = 'houses';
-      houseWrap.innerHTML = pdata.houses === 5 ? '<span class="hotel">🏨</span>' : '🏠'.repeat(pdata.houses);
-      el.appendChild(houseWrap);
+    // House level as a battery gauge on the color cap: light up one bar per house
+    // (1-4), and at the hotel tier (5) collapse into one solid glowing block
+    // instead of 4 lit bars — see .charge-bars / .hotel-full in CSS.
+    const dotEl = el.querySelector('.group-dot');
+    if (dotEl){
+      const isHotel = pdata.houses === 5;
+      dotEl.classList.toggle('hotel-full', isHotel);
+      dotEl.querySelectorAll('.charge-bar').forEach((bar, idx) => {
+        bar.classList.toggle('filled', !isHotel && idx < pdata.houses);
+      });
     }
   });
 
@@ -335,6 +356,30 @@ function hexToRgba(hex, alpha){
   const h = hex.replace('#','');
   const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
   return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Picks whichever of near-black or near-white gives better contrast against an
+// owned tile's recolored background, using WCAG relative luminance + contrast
+// ratio math (not a naive brightness average). Crucially this checks against the
+// *actual rendered background* — the owner color mixed ~75% toward white, same as
+// the .tile.owned gradient in CSS — not the raw owner color, since a raw color's
+// luminance can point the wrong way once it's been lightened by that mix. This is
+// what keeps owned-tile text legible however bold or dark the owner's color is.
+function readableTextColor(hex){
+  const toLin = c => { c/=255; return c <= 0.04045 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4); };
+  const luminanceOf = rgb => 0.2126*toLin(rgb[0]) + 0.7152*toLin(rgb[1]) + 0.0722*toLin(rgb[2]);
+  const contrast = (l1, l2) => { const hi = Math.max(l1,l2), lo = Math.min(l1,l2); return (hi+0.05)/(lo+0.05); };
+
+  const h = hex.replace('#','');
+  const owner = [parseInt(h.substring(0,2),16), parseInt(h.substring(2,4),16), parseInt(h.substring(4,6),16)];
+  // Midpoint of the CSS gradient's two stops (82% and 68% owner-color-over-white).
+  const mixPct = 0.75;
+  const bg = owner.map(c => c*mixPct + 255*(1-mixPct));
+  const bgLuminance = luminanceOf(bg);
+
+  const blackLuminance = luminanceOf([0x24,0x1f,0x2e]);
+  const whiteLuminance = 1;
+  return contrast(bgLuminance, blackLuminance) >= contrast(bgLuminance, whiteLuminance) ? '#241f2e' : '#ffffff';
 }
 
 // Which edge of a tile faces the board's center — used to place the color-group dot
@@ -357,8 +402,13 @@ function groupFullSetOwner(group){
 
 function tileInnerHtml(tile){
   const icon = { chance:'❓', chest:'📦', tax:'💰', jail:'🚔', free:'🅿️', gotojail:'👮', go:'➡️' }[tile.type] || '';
-  const price = tile.price ? `<div class="tile-price">$${tile.price}</div>` : '';
-  const dot = tile.group ? `<div class="group-dot group-${tile.group}"></div>` : '';
+  const price = tile.price ? `<div class="tile-price">${tile.price}k₫</div>` : '';
+  // The color cap doubles as a house-level battery gauge (see .charge-bars in CSS);
+  // only property tiles carry a group, and only property tiles ever have houses,
+  // so the 4 bars live here unconditionally and just sit empty until built.
+  const dot = tile.group
+    ? `<div class="group-dot group-${tile.group}"><div class="charge-bars">${'<span class="charge-bar"></span>'.repeat(4)}</div></div>`
+    : '';
   return `${dot}<div class="tile-name">${icon} ${escapeHtml(tile.name)}</div>${price}`;
 }
 
@@ -416,6 +466,7 @@ function maybeAnimateMoveHop(){
         for (let s=1; s<=steps; s++){
           hopTimers.push(setTimeout(() => {
             placeHopTokenOnTile(uid, (from + s) % 40);
+            playSound('footstep');
           }, (s-1) * stepMs));
         }
       }, tumbleMs));
@@ -508,7 +559,7 @@ function renderPlayerPanel(){
     card.className = 'player-card' + (state.currentTurn===uid ? ' active-turn' : '') + (p.bankrupt ? ' bankrupt' : '') + (inDebt ? ' in-debt' : '');
     card.querySelector('.token-dot').style.background = p.color;
     card.querySelector('.player-name').innerHTML =
-      `${escapeHtml(p.name)}${uid===MY_UID?' (bản thân)':''}${p.inJail?' 🚔':''}${p.bankrupt ? ' <span class="status-badge bankrupt-badge">Bankrupt</span>' : ''}`;
+      `${escapeHtml(p.name)}${uid===MY_UID?' (bản thân)':''}${p.inJail?' 🚔':''}${p.skipNextTurn?' <span class="status-badge skip-badge" title="Bỏ lượt kế tiếp vì vừa hốt Quỹ Nghỉ Ngơi">⏭️❌</span>':''}${p.bankrupt ? ' <span class="status-badge bankrupt-badge">Bankrupt</span>' : ''}`;
 
     // Host-only Kick button, hidden for the host's own card and for anyone already out.
     let kickBtn = card.querySelector('.btn-kick');
@@ -522,7 +573,7 @@ function renderPlayerPanel(){
       }
       kickBtn.onclick = (e) => {
         e.stopPropagation();
-        if (confirm(`Kick ${p.name} from the game? They'll be marked bankrupt.`)) kickPlayer(uid);
+        if (confirm(`Kick ${p.name} khỏi phòng và nhận $1.000.00?.`)) kickPlayer(uid);
       };
     } else if (kickBtn){
       kickBtn.remove();
@@ -530,7 +581,7 @@ function renderPlayerPanel(){
 
     const moneyWrap = card.querySelector('.player-money');
     moneyWrap.classList.toggle('debt', inDebt);
-    moneyWrap.querySelector('.money-amount').textContent = `$${p.money}${inDebt?' ⚠️ in debt':''}`;
+    moneyWrap.querySelector('.money-amount').textContent = `${p.money}k₫${inDebt?' ⚠️ đang nợ':''}`;
 
     let turnBadge = card.querySelector('.turn-badge');
     if (state.currentTurn === uid){
@@ -563,7 +614,7 @@ function renderPlayerPanel(){
   let pot = wrap.querySelector('.jackpot-line');
   if (state.settings?.freeParkingJackpot){
     if (!pot){ pot = document.createElement('div'); pot.className = 'jackpot-line'; wrap.appendChild(pot); }
-    pot.textContent = `🅿️ Quỹ Nghỉ Ngơi: $${state.freeParkingPot||0}`;
+    pot.textContent = `💸 Quỹ Học Bổng: ${state.freeParkingPot||0}k₫`;
     wrap.appendChild(pot); // keep it pinned after the (possibly reordered) player cards
   } else if (pot){
     pot.remove();
@@ -637,7 +688,7 @@ function renderActionBar(){
   // rather than immediately rolling again in the turn that jailed them.
   if (me.inJail && state.turnPhase === 'roll'){
     const fine = state.settings?.jailFineAmount ?? 50;
-    bar.appendChild(btn(`Trả $${fine} để ra tù`, payJailFine, me.money < fine));
+    bar.appendChild(btn(`Trả ${fine}k₫ để ra khỏi khu Quân sự`, payJailFine, me.money < fine));
     bar.appendChild(btn(`Sử dụng Jail-Free Card (${me.jailFreeCards||0})`, useJailCard, (me.jailFreeCards||0) < 1));
     bar.appendChild(btn('Gieo xúc đôi', rollForJail));
     return;
@@ -647,14 +698,16 @@ function renderActionBar(){
     bar.appendChild(btn('🎲 Gieo Xúc Xắc', rollDice));
   } else if (state.turnPhase === 'action' && state.pendingBuy && state.pendingBuy.uid === MY_UID){
     const tile = BOARD[state.pendingBuy.tileIndex];
-    bar.appendChild(btn(`Mua ${tile.name} — $${tile.price}`, buyProperty, me.money < tile.price));
+    bar.appendChild(btn(`Mua ${tile.name} — ${tile.price}k₫`, buyProperty, me.money < tile.price));
     if (state.settings?.auctionEnabled){
       bar.appendChild(btn('Đấu Giá', startPropertyAuction, false, true));
     } else {
-      bar.appendChild(btn('Đéo Muốn', declineBuy, false, true));
+      bar.appendChild(btn('Chê', declineBuy, false, true));
     }
   } else if (state.turnPhase === 'action' && state.pendingRailAuction && state.pendingRailAuction.uid === MY_UID){
     renderRailAuctionChoiceBar(bar);
+  } else if (state.turnPhase === 'action' && state.pendingTileChoice && state.pendingTileChoice.uid === MY_UID){
+    bar.innerHTML = `<div class="waiting-msg">✨ Chọn một ô bất kỳ trên bàn cờ để dịch chuyển đến!</div>`;
   } else if (state.turnPhase === 'end'){
     bar.appendChild(btn('Kết thúc lượt', endTurn));
   }
@@ -662,21 +715,21 @@ function renderActionBar(){
 
 function renderDebtBar(bar, me){
   const raiseCashHint = state.settings?.cashRuleMode === 'mortgage'
-    ? 'Mortgage properties'
-    : 'Sell houses/hotels back to the bank';
+    ? 'Hãy cố gắng xoay xở'
+    : 'Hãy cố gắng xoay xở';
   const banner = document.createElement('div');
   banner.className = 'debt-banner';
-  banner.innerHTML = `⚠️ Thiếu <strong>$${Math.abs(me.money)}</strong>. ${escapeHtml(raiseCashHint)} để bù vào, hoặc phá sản.`;
+  banner.innerHTML = `⚠️ Thiếu <strong>${Math.abs(me.money)}k₫</strong>. ${escapeHtml(raiseCashHint)} để bù vào, hoặc nghỉ học.`;
   bar.appendChild(banner);
   const row = document.createElement('div');
   row.className = 'debt-actions';
   row.appendChild(btn('Quản Lý Tài Sản', openPropertiesDrawer));
-  row.appendChild(btn('Tuyên Bố Phá Sản', confirmBankruptcy, false, true));
+  row.appendChild(btn('Tuyên Bố Nghỉ học', confirmBankruptcy, false, true));
   bar.appendChild(row);
 }
 
 function confirmBankruptcy(){
-  if (confirm("Declare bankruptcy? You'll be out of the game and your remaining properties will be handed over.")){
+  if (confirm("Nghỉ học làm Steve Jobs VN?")){
     declareBankruptcy();
   }
 }
@@ -693,7 +746,7 @@ function renderRailAuctionChoiceBar(bar){
   wrap.className = 'rail-auction-bar';
   wrap.innerHTML = `
     <div class="rail-auction-info">
-      🚂 ${escapeHtml(tile.name)} — ${pdata.auctionPrice ? `current bid $${pdata.auctionPrice} by ${escapeHtml(state.players[pdata.auctionHighBidder]?.name || '?')}` : 'no bids yet'}
+      🚂 ${escapeHtml(tile.name)} — ${pdata.auctionPrice ? `đang được đấu giá ${pdata.auctionPrice}k₫ bởi ${escapeHtml(state.players[pdata.auctionHighBidder]?.name || '?')}` : 'chưa có đấu giá'}
     </div>
     <div class="rail-auction-controls">
       <div class="numeric-input-row">
@@ -736,16 +789,16 @@ function renderAuctionModal(){
   modal.innerHTML = `
     <div class="modal-card auction-modal">
       <h3>🔨 Auction: ${escapeHtml(tile.name)}</h3>
-      <div class="auction-current-bid">Current bid: <strong>$${auction.currentBid}</strong></div>
-      <div class="auction-current-bidder">${auction.currentBidder ? `Highest bidder: ${escapeHtml(state.players[auction.currentBidder].name)}` : 'No bids yet'}</div>
+      <div class="auction-current-bid">Current bid: <strong>${auction.currentBid}k₫</strong></div>
+      <div class="auction-current-bidder">${auction.currentBidder ? `Đầu chuỗi thức ăn: ${escapeHtml(state.players[auction.currentBidder].name)}` : 'Chưa ai đấu giá'}</div>
       <div class="auction-timer-track"><div class="auction-timer-bar" id="auction-timer-bar"></div></div>
       ${canParticipate ? (myTurnToBid ? `
       <div class="auction-bid-buttons">
-        <button class="btn" id="auction-bid-2">+$2</button>
-        <button class="btn" id="auction-bid-10">+$10</button>
-        <button class="btn" id="auction-bid-50">+$50</button>
-      </div>` : `<p class="muted">You're the top bidder — wait for someone else to raise it.</p>`)
-      : `<p class="muted">Watching this one from the sidelines.</p>`}
+        <button class="btn" id="auction-bid-2">+2k₫</button>
+        <button class="btn" id="auction-bid-10">+10k₫</button>
+        <button class="btn" id="auction-bid-50">+50k₫</button>
+      </div>` : `<p class="muted">Bạn đang ra giá cao nhất — nhưng người khác có thể ra giá cao hơn đấy.</p>`)
+      : `<p class="muted">Đã bỏ qua đấu giá</p>`}
     </div>`;
   modal.classList.add('show');
   if (canParticipate && myTurnToBid){
@@ -770,6 +823,34 @@ function renderAuctionModal(){
       bar.style.width = '0%';
     });
   });
+}
+
+// Rare Chance card: "teleport to any tile you pick" (see the 'choose_tile' case in
+// drawCard(), js/game.js). Dims everything except the board for every connected
+// client while state.pendingTileChoice is set, and shows a small pulsing banner —
+// its wording differs depending on whether it's YOU who has to pick, or you're just
+// watching someone else pick. Clicking is only wired up for the actual chooser (see
+// onTileClick, which routes to chooseTileDestination while this is pending for them);
+// #board-grid.tile-choosable is what turns on the hover glow for that one player.
+function renderTileChoiceOverlay(){
+  const screen = document.getElementById('screen-game');
+  const banner = document.getElementById('tile-choice-banner');
+  const grid = document.getElementById('board-grid');
+  const choice = state.pendingTileChoice;
+
+  screen.classList.toggle('tile-choice-mode', !!choice);
+  if (!choice){
+    banner.style.display = 'none';
+    grid.classList.remove('tile-choosable');
+    return;
+  }
+
+  const isMe = choice.uid === MY_UID;
+  grid.classList.toggle('tile-choosable', isMe);
+  banner.style.display = 'block';
+  banner.textContent = isMe
+    ? '✨ Vận đỏ! Chọn một ô bất kỳ để dịch chuyển đến'
+    : `✨ ${state.players[choice.uid]?.name || '...'} đang chọn một ô để dịch chuyển đến…`;
 }
 
 function btn(label, fn, disabled, secondary){
@@ -828,6 +909,10 @@ function renderPropertyDrawerButton(){
 }
 
 function onTileClick(tileIndex){
+  if (state.pendingTileChoice && state.pendingTileChoice.uid === MY_UID){
+    chooseTileDestination(tileIndex);
+    return;
+  }
   const tile = BOARD[tileIndex];
   if (!(tile.type==='property' || tile.type==='railroad' || tile.type==='utility')) return;
   openPropertyDetail(tileIndex);
@@ -837,21 +922,21 @@ function openPropertyDetail(tileIndex){
   const tile = BOARD[tileIndex];
   const pdata = state.properties[tileIndex];
   const modal = document.getElementById('modal');
-  const owner = pdata.owner ? state.players[pdata.owner].name : 'Unowned';
+  const owner = pdata.owner ? state.players[pdata.owner].name : 'chưa có';
   let rentLines = '';
   if (tile.type === 'property'){
-    const labels = ['Phí khởi điểm (hoặc gấp đôi nếu full set màu)','1 Nhà','2 Nhà','3 Nhà','4 Nhà','Khách Sạn'];
-    rentLines = tile.rent.map((r,i) => `<div class="rent-row">${labels[i]}<span>$${i===0 ? r+' / '+(r*2) : r}</span></div>`).join('');
+    const labels = ['Khởi điểm (full set màu = x2)','1 Tòa Nhà','2 Tòa Nhà','3 Tòa Nhà','4 Tòa Nhà','Cơ sở hai'];
+    rentLines = tile.rent.map((r,i) => `<div class="rent-row">${labels[i]}<span>${i===0 ? r+' / '+(r*2) : r}k₫</span></div>`).join('');
   } else if (tile.type === 'railroad' && state.settings?.auctionRailwaysEnabled){
     const paid = pdata.purchasePrice;
     rentLines = RAILROAD_AUCTION_MULTIPLIERS.map((m,i) =>
-      `<div class="rent-row">${i+1} railroad${i?'s':''}<span>${paid!=null ? '$'+Math.round(paid*m) : m+'× purchase price'}</span></div>`
+      `<div class="rent-row">${i+1} railroad${i?'s':''}<span>${paid!=null ? '$'+Math.round(paid*m) : m+'× giá khi mua'}</span></div>`
     ).join('');
-    rentLines += `<div class="rent-row muted" style="font-size:.75rem;">House rule: rent is what was paid for this railroad × the multiplier for how many the owner holds.</div>`;
+    rentLines += `<div class="rent-row muted" style="font-size:.75rem;">Phí: Giá khi mua ô này × số Sân Bay/Cảng mà người chủ sở hữu.</div>`;
   } else if (tile.type === 'railroad'){
-    rentLines = tile.rent.map((r,i) => `<div class="rent-row">${i+1} railroad${i?'s':''}<span>$${r}</span></div>`).join('');
+    rentLines = tile.rent.map((r,i) => `<div class="rent-row">${i+1} cửa hàng<span>${r}k₫</span></div>`).join('');
   } else {
-    rentLines = `<div class="rent-row">1 utility<span>4× dice roll</span></div><div class="rent-row">2 utilities<span>10× dice roll</span></div>`;
+    rentLines = `<div class="rent-row">1 Cửa Hàng<span>4× Giá trị xúc xắc</span></div><div class="rent-row">2 Cửa Hàng<span>10× giá trị xúc xắc</span></div>`;
   }
 
   let controls = '';
@@ -861,25 +946,30 @@ function openPropertyDetail(tileIndex){
     const buildCheck = canBuildOn(tileIndex);
     const sellBlocked = cashRuleMode === 'mortgage';
     controls += `<div class="modal-actions">
-      <button class="btn" id="mbtn-build" ${buildCheck.ok ? '' : 'disabled title="'+escapeHtml(buildCheck.reason)+'"'}>Nâng ${pdata.houses>=4?'Khách Sạn':'Nhà'} (— $${tile.house})</button>
-      <button class="btn btn-secondary" id="mbtn-sell" ${(pdata.houses<=0 || sellBlocked)?'disabled':''} ${sellBlocked?'title="House rule: Mortgage Mode is on — sell is off."':''}>Hạ Nhà (+$${Math.floor(tile.house/2)})</button>
+      <button class="btn" id="mbtn-build" ${buildCheck.ok ? '' : 'disabled title="'+escapeHtml(buildCheck.reason)+'"'}>Nâng ${pdata.houses>=4?'Cơ sở hai':'Tòa Nhà'} (— ${tile.house}k₫)</button>
+      <button class="btn btn-secondary" id="mbtn-sell" ${(pdata.houses<=0 || sellBlocked)?'disabled':''} ${sellBlocked?'title=": Mortgage Mode is on — sell is off."':''}>Hạ Nhà (+${Math.floor(tile.house/2)}k₫)</button>
     </div>
     ${!buildCheck.ok ? `<p class="muted" style="font-size:.78rem;">${escapeHtml(buildCheck.reason)}</p>` : ''}
-    ${sellBlocked ? `<p class="muted" style="font-size:.78rem;">Thế chấp tài sản, nghĩa là không thể bán — mà chỉ có thể thế chấp.</p>` : ''}`;
+    ${sellBlocked ? `<p class="muted" style="font-size:.78rem;">Thế chấp tài sản, nghĩa là không thể bán — mà chỉ có thể thế chấp.</p>` : ''}
+    ${(cashRuleMode === 'sell' && pdata.houses > 0) ? `<p class="muted" style="font-size:.78rem;">Phải bán hết nhà trước đã.</p>` : ''}`;
   }
-  if (isMine && pdata.houses===0 && isMyTurn()){
-    const mortgageBlocked = cashRuleMode === 'sell' && !pdata.mortgaged;
-    controls += `<div class="modal-actions">
-      <button class="btn btn-secondary" id="mbtn-mortgage" ${mortgageBlocked?'disabled':''} ${mortgageBlocked?'title="House rule: Sell Mode is on — mortgaging is off."':''}>${pdata.mortgaged ? `Pay off mortgage (-$${Math.floor(tile.price/2*1.1)})` : `Thế Chấp (+$${Math.floor(tile.price/2)})`}</button>
-    </div>
-    ${mortgageBlocked ? `<p class="muted" style="font-size:.78rem;">Bán tài sản, nghĩa là không thể thế chấp — mà chỉ có thể bán.</p>` : ''}`;
-  }
+    if (isMine && pdata.houses===0 && isMyTurn()){
+      if (cashRuleMode === 'sell'){
+        controls += `<div class="modal-actions">
+          <button class="btn btn-secondary" id="mbtn-sell-property">Bán đất (+${Math.floor(tile.price/2)}k₫)</button>
+        </div>`;
+      } else {
+        controls += `<div class="modal-actions">
+          <button class="btn btn-secondary" id="mbtn-mortgage">${pdata.mortgaged ? `Trả thế chấp (-${Math.floor(tile.price/2*1.1)}k₫)` : `Thế Chấp (+${Math.floor(tile.price/2)}k₫)`}</button>
+        </div>`;
+      }
+    }
 
   const levelBadge = tile.type === 'property'
     ? `<div class="level-badge level-${pdata.houses}">${
-        pdata.houses === 0 ? 'Chưa có BĐS' :
-        pdata.houses === 5 ? '🏨 Hotel — max level' :
-        `🏠 Level ${pdata.houses} of 4`
+        pdata.houses === 0 ? 'Chưa có tòa nhà' :
+        pdata.houses === 5 ? '🏨 Cơ sở hai — max level' :
+        `🏠 Tòa ${pdata.houses} / 4`
       }</div>`
     : '';
 
@@ -887,9 +977,9 @@ function openPropertyDetail(tileIndex){
     <div class="modal-card group-${tile.group||''}">
       <button class="modal-close" id="modal-close">✕</button>
       <h3>${escapeHtml(tile.name)}</h3>
-      <div class="modal-owner">Owner: ${escapeHtml(owner)}${pdata.mortgaged ? ' (mortgaged)' : ''}</div>
+      <div class="modal-owner">Liên hệ: ${escapeHtml(owner)}${pdata.mortgaged ? ' (đang thế chấp)' : ' để biết thêm chi tiết về nơi này'}</div>
       ${(!pdata.owner && tile.type==='railroad' && state.settings?.auctionRailwaysEnabled && pdata.auctionPrice > 0)
-        ? `<div class="modal-owner">Current bid: $${pdata.auctionPrice} by ${escapeHtml(state.players[pdata.auctionHighBidder]?.name || '?')}</div>` : ''}
+        ? `<div class="modal-owner">Đấu giá hiện tại: ${pdata.auctionPrice}k₫ bởi ${escapeHtml(state.players[pdata.auctionHighBidder]?.name || '?')}</div>` : ''}
       ${levelBadge}
       <div class="rent-table">${rentLines}</div>
       ${controls}
@@ -902,6 +992,8 @@ function openPropertyDetail(tileIndex){
   if (sellBtn) sellBtn.onclick = () => { sellHouse(tileIndex); modal.classList.remove('show'); };
   const mortBtn = document.getElementById('mbtn-mortgage');
   if (mortBtn) mortBtn.onclick = () => { toggleMortgage(tileIndex); modal.classList.remove('show'); };
+  const sellPropBtn = document.getElementById('mbtn-sell-property');
+  if (sellPropBtn) sellPropBtn.onclick = () => { sellPropertyToBank(tileIndex); modal.classList.remove('show'); };
 }
 
 function openPropertiesDrawer(){
@@ -931,7 +1023,7 @@ function openPropertiesDrawer(){
 
 function describeTradeSide(side){
   const parts = [];
-  if (side.cash) parts.push(`$${side.cash}`);
+  if (side.cash) parts.push(`${side.cash}k₫`);
   (side.properties||[]).forEach(idx => parts.push(BOARD[idx].name));
   if (side.jailFreeCards) parts.push(`${side.jailFreeCards} Jail-Free card${side.jailFreeCards>1?'s':''}`);
   return parts.length ? parts.join(', ') : 'chẳng có gì';
@@ -1015,7 +1107,7 @@ function renderOutgoingTrades(){
 function openTradeBuilder(prefill){
   const modal = document.getElementById('modal');
   const others = otherActivePlayers();
-  if (others.length === 0){ showToast('No one else to trade with.'); return; }
+  if (others.length === 0){ showToast('Một nước một vua thì trade với ai?'); return; }
   const defaultTarget = prefill?.toUid || others[0];
 
   modal.innerHTML = `
@@ -1076,7 +1168,7 @@ function openTradeBuilder(prefill){
     const preReceive = new Set(prefill?.receive?.properties||[]);
     document.getElementById('tb-give-props').innerHTML = myProps.length ? myProps.map(t => `
       <label class="prop-check-row"><input type="checkbox" value="${t.i}" ${preGive.has(t.i)?'checked':''}> ${escapeHtml(t.name)}</label>`).join('')
-      : '<p class="muted" style="font-size:.8rem;">Bạn chưa có tài sản nào (cần tháo dỡ hết BĐS trên tài sản trước).</p>';
+      : '<p class="muted" style="font-size:.8rem;">Bạn chưa có tài sản nào (cần tháo dỡ hết các tòa nhà trên tài sản trước).</p>';
     document.getElementById('tb-receive-props').innerHTML = theirProps.length ? theirProps.map(t => `
       <label class="prop-check-row"><input type="checkbox" value="${t.i}" ${preReceive.has(t.i)?'checked':''}> ${escapeHtml(t.name)}</label>`).join('')
       : '<p class="muted" style="font-size:.8rem;">Họ chưa có tài sản nào cho bạn đâu</p>';
@@ -1103,10 +1195,10 @@ function openTradeBuilder(prefill){
     const receiveJail = Math.max(0, parseInt(document.getElementById('tb-receive-jail').value) || 0);
     const note = document.getElementById('tb-note').value.trim();
     if (giveCash===0 && receiveCash===0 && giveProps.length===0 && receiveProps.length===0 && giveJail===0 && receiveJail===0){
-      showToast('Add at least something to the trade.'); return;
+      showToast('Chưa có gì để đem vào giao dịch'); return;
     }
-    if (giveCash > state.players[MY_UID].money){ showToast("You don't have that much cash."); return; }
-    if (giveJail > (state.players[MY_UID].jailFreeCards||0)){ showToast("You don't have that many Jail-Free cards."); return; }
+    if (giveCash > state.players[MY_UID].money){ showToast("Bạn không đủ tiền mặt"); return; }
+    if (giveJail > (state.players[MY_UID].jailFreeCards||0)){ showToast("Không có nhiều lượt ra khỏi khu Quân sự miễn phí đến vậy đâu"); return; }
     proposeTrade({
       toUid,
       give: { cash: giveCash, properties: giveProps, jailFreeCards: giveJail },
@@ -1159,7 +1251,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const maxPlayers = parseInt(document.getElementById('select-max-players').value);
     const rawStartingCash = parseInt(document.getElementById('input-starting-cash').value);
     const startingCash = (Number.isFinite(rawStartingCash) && rawStartingCash >= 0) ? rawStartingCash : 1500;
-    if (!name){ showToast('Tên thì đéo nhập.'); return; }
+    if (!name){ showToast('Tên thì đéo nhập'); return; }
     createRoom(name, maxPlayers, startingCash);
   });
 
@@ -1180,7 +1272,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-join-room').addEventListener('click', () => {
     const name = document.getElementById('input-name-join').value.trim();
     const code = document.getElementById('input-room-code').value.trim();
-    if (!name || !code){ showToast('Enter your name and the room code.'); return; }
+    if (!name || !code){ showToast('Tên đâu?? Code đâu??'); return; }
     joinRoom(code, name);
   });
 
@@ -1189,7 +1281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-properties').addEventListener('click', openPropertiesDrawer);
   document.getElementById('btn-trades').addEventListener('click', openTradeCenter);
   document.getElementById('btn-bankrupt').addEventListener('click', () => {
-    if (confirm("Tuyên bố phá sản hả? Nếu phá sản sẽ thành người xem của ván này.")){
+    if (confirm("Nghỉ học hả? Nếu nghỉ học sẽ thành người xem của ván này.")){
       giveUpBankruptcy();
     }
   });

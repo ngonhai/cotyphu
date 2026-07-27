@@ -317,6 +317,7 @@ select option{ background: var(--bg-2); color: var(--ink); }
 
 .game-body{ flex:1; display:flex; overflow:hidden; min-height:0; }
 .board-wrap{
+  position: relative;
   flex:1; display:flex; align-items:center; justify-content:center; padding: 14px;
   overflow:auto; min-height:0; min-width:0;
   /* Explicit touch-scroll affordances: overflow:auto alone scrolls fine with a
@@ -427,7 +428,7 @@ select option{ background: var(--bg-2); color: var(--ink); }
   /* Sized off the board's own width via container query units, so font size always
      tracks the frame's actual rendered size rather than the viewport — this is what
      keeps text from ballooning relative to its card when the page is zoomed in. */
-  font-size: clamp(6px, 1.15cqw, 11px);
+  font-size: clamp(6px, 1.45cqw, 11px);
   cursor: default; line-height:1.2; overflow: visible;
   user-select: none;
   box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 2px 5px rgba(0,0,0,.28);
@@ -439,21 +440,56 @@ select option{ background: var(--bg-2); color: var(--ink); }
   box-shadow: 0 1px 0 rgba(255,255,255,.7) inset, 0 10px 18px rgba(0,0,0,.4);
 }
 .tile > *{ position:relative; z-index:1; pointer-events: none; } /* keep text/houses above the glass overlay */
-.tile-name{ font-size: 1em; overflow-wrap: anywhere; }
+.tile-name{
+  font-size: 1em; overflow-wrap: anywhere;
+  /* Long names (e.g. "Đại học Khoa học Xã hội & Nhân văn") used to just keep
+     wrapping and spill past the tile's own border. Clamp to 3 lines and ellipsize
+     instead — the full name is always one click away in the property panel, so
+     nothing is actually lost, just kept inside its own card. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tile-price{ font-family:'IBM Plex Mono',monospace; font-size: .86em; color: #6b6478; margin-top:2px; font-weight:700; }
 .tile.mortgaged{ opacity:.5; }
-.houses{ font-size: 1.1em; margin-top:2px; filter: drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
 
-/* Ownership: a solid colored ring around the tile in the owner's color, PLUS a light
-   wash of that same color across the card itself — color-mix keeps it subtle (a
-   ~20% tint against white) so the dark tile text stays legible while ownership reads
-   at a glance even from a distance, not just up close at the border. */
+/* Ownership: the tile's whole face is recolored to a bold wash of the owner's color
+   (not just a faint tint) so ownership reads instantly at a glance, plus a bright
+   rim and a glassy diagonal shine sweep for extra "this is claimed" punch. Text
+   color is NOT hardcoded here — ui.js computes each owner's color luminance and
+   sets --owner-text/--owner-text-soft to near-black or near-white per player, so
+   the tile-name and price stay legible against whichever owner color lands here. */
 .tile.owned{
-  border: 3px solid var(--owner-color, transparent);
+  border: 3px solid color-mix(in srgb, var(--owner-color, transparent) 92%, black);
   background: linear-gradient(160deg,
-    color-mix(in srgb, var(--owner-color, #fff) 24%, rgba(255,255,255,.97)),
-    color-mix(in srgb, var(--owner-color, #fff) 16%, rgba(238,241,248,.93)));
-  box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 2px 5px rgba(0,0,0,.28), 0 0 8px 0 var(--owner-color, transparent);
+    color-mix(in srgb, var(--owner-color, #fff) 82%, white),
+    color-mix(in srgb, var(--owner-color, #fff) 68%, white));
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.45) inset,
+    0 2px 5px rgba(0,0,0,.32),
+    0 0 0 1px color-mix(in srgb, var(--owner-color, transparent) 60%, transparent),
+    0 0 12px 1px color-mix(in srgb, var(--owner-color, transparent) 70%, transparent);
+}
+/* Glassy diagonal shine sweep — a soft bright streak across the upper-left of the
+   card, like light catching a glossy sticker. Purely decorative (no pointer events,
+   sits below the tile text via z-index) so it never interferes with readability. */
+.tile.owned::before{
+  content:''; position:absolute; inset:0; border-radius:5px; pointer-events:none; z-index:0;
+  background: linear-gradient(115deg,
+    rgba(255,255,255,.55) 0%,
+    rgba(255,255,255,.18) 22%,
+    rgba(255,255,255,0) 42%,
+    rgba(255,255,255,0) 100%);
+  mix-blend-mode: overlay;
+}
+.tile.owned .tile-name{
+  color: var(--owner-text, #241f2e);
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--owner-text, #241f2e) 15%, transparent);
+}
+.tile.owned .tile-price{
+  color: var(--owner-text-soft, #6b6478);
 }
 
 /* Color-group cap: a pill-shaped marker in the group's color, floating above the tile
@@ -494,13 +530,71 @@ select option{ background: var(--bg-2); color: var(--ink); }
 .group-dot.group-green{ background:#4bb355; }
 .group-dot.group-darkblue{ background:#3059b8; }
 
-/* Monopoly glow: once one player owns an entire color set, that set's tiles pulse
-   between gold ("prosperity") and red ("danger") — everyone else should feel it. */
-@keyframes monopoly-pulse{
-  0%, 100% { box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 2px 5px rgba(0,0,0,.28), 0 0 4px 1px var(--owner-color, transparent), 0 0 16px 3px rgba(242,184,7,.6); }
-  50%      { box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 2px 5px rgba(0,0,0,.28), 0 0 4px 1px var(--owner-color, transparent), 0 0 22px 6px rgba(244,63,94,.6); }
+/* House level as a battery-charge gauge, built right into the color cap instead of
+   a row of house emoji under the tile. 4 segments = 4 houses; each fills in turn
+   as houses are built, brightest at the "start" edge (left for a horizontal cap,
+   bottom for a vertical one — same convention as a real charge indicator). At the
+   hotel tier the segments disappear and the whole cap becomes one solid, glowing
+   "fully charged" block instead of 4 separate lit bars. */
+.charge-bars{
+  position:absolute; inset: 14% 8%; z-index:1; pointer-events:none;
+  display:flex; gap:8%;
 }
-.tile.monopoly{ animation: monopoly-pulse 2.4s ease-in-out infinite; z-index:3; }
+.tile[data-side="top"] .charge-bars, .tile[data-side="bottom"] .charge-bars{
+  flex-direction: row;
+}
+.tile[data-side="left"] .charge-bars, .tile[data-side="right"] .charge-bars{
+  flex-direction: column-reverse; /* fills bottom-up, like a real battery */
+}
+.charge-bar{
+  flex:1; border-radius:1px;
+  background: transparent;
+  box-shadow: none;
+  transition: background .25s ease, box-shadow .25s ease;
+}
+.charge-bar.filled{
+  background: linear-gradient(160deg, #fffbe8, #ffd23f);
+  box-shadow: 0 0 4px 1px rgba(255,210,63,.9), inset 0 0 0 1px rgba(255,255,255,.6);
+}
+/* Hotel ("Cơ sở hai"): the cap goes fully solid and glows, overriding its group
+   color entirely — the clearest possible "maxed out" signal on a tiny element.
+   Same specificity as the .group-dot.group-* rules above, so source order alone
+   (this comes later) is what makes it win; no !important needed. */
+.group-dot.hotel-full{
+  background: linear-gradient(160deg, #fffbe8, #ffd23f);
+  box-shadow: 0 0 8px 2px rgba(255,210,63,.95), inset 0 1px 1px rgba(255,255,255,.7), 0 2px 5px rgba(0,0,0,.4);
+}
+.group-dot.hotel-full .charge-bars{ display:none; }
+
+/* Monopoly glow: once one player owns an entire color set, that set's rims pulse
+   between bright white and cool grey — a chrome shimmer rather than a colored
+   alarm, since the tiles themselves are now boldly recolored per owner and a
+   gold/red pulse fought with whatever hue was already there. White/grey reads as
+   "fully charged / maxed out" against any owner color, with the same thick
+   double-ring + wide bloom intensity as before so it's still unmistakable. */
+@keyframes monopoly-pulse{
+  0%, 100% {
+    border-color: color-mix(in srgb, var(--owner-color, transparent) 55%, #ffffff);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.5) inset, 0 2px 5px rgba(0,0,0,.32),
+      0 0 0 2px rgba(255,255,255,.92),
+      0 0 14px 3px rgba(255,255,255,.8),
+      0 0 34px 10px rgba(255,255,255,.45);
+  }
+  50%      {
+    border-color: color-mix(in srgb, var(--owner-color, transparent) 55%, #9aa0ac);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,.5) inset, 0 2px 5px rgba(0,0,0,.32),
+      0 0 0 2px rgba(154,160,172,.9),
+      0 0 18px 5px rgba(154,160,172,.75),
+      0 0 42px 14px rgba(154,160,172,.5);
+  }
+}
+.tile.monopoly{
+  border-width: 4px;
+  animation: monopoly-pulse 2.4s ease-in-out infinite;
+  z-index:3;
+}
 
 .tile-go, .tile-jail, .tile-free, .tile-gotojail{ background: linear-gradient(160deg, #fbfaf5, #eee7d6); }
 .tile-chance, .tile-chest{ background: linear-gradient(160deg, #fff8e8, #ffefc9); }
@@ -595,6 +689,7 @@ select option{ background: var(--bg-2); color: var(--ink); }
 }
 .status-badge.bankrupt-badge{ background: rgba(251,113,133,.18); color: var(--danger); }
 .status-badge.spectator-badge{ background: rgba(34,211,238,.16); color: var(--accent); vertical-align:middle; }
+.status-badge.skip-badge{ background: rgba(242,184,7,.18); color: var(--brass-bright, #f2b807); text-transform:none; letter-spacing:0; }
 
 /* Floating "+$X" / "-$X" flash that appears next to a player's money on any change,
    then drifts up and fades out on its own — purely cosmetic, removed via timeout in JS.
@@ -640,6 +735,39 @@ select option{ background: var(--bg-2); color: var(--ink); }
   display:none; text-align:center; padding: 12px; font-weight:800; color:#1a1406;
   background: linear-gradient(135deg, var(--brass-bright), var(--brass));
   box-shadow: 0 4px 16px rgba(242,184,7,.3);
+}
+
+/* Rare Chance card: "teleport to any tile you pick". While state.pendingTileChoice is
+   set (see renderTileChoiceOverlay in ui.js), #screen-game gets this class for every
+   connected client — chooser and spectators alike — so the header and side panel dim
+   out of the way and the board itself is what stays lit, per the request that "other
+   details of the game should be left darker, emphasizing the tiles." */
+#screen-game.tile-choice-mode > .game-header,
+#screen-game.tile-choice-mode .side-panel{
+  opacity:.28; filter: blur(1px) grayscale(.4); pointer-events:none;
+  transition: opacity .35s ease, filter .35s ease;
+}
+#screen-game.tile-choice-mode .board-wrap{
+  box-shadow: inset 0 0 0 2px rgba(250,204,21,.5), inset 0 0 70px 12px rgba(250,204,21,.18);
+  transition: box-shadow .35s ease;
+}
+.tile-choice-banner{
+  text-align:center; padding:10px 16px; font-weight:800; font-size:.9rem;
+  color:#1a1406; background: linear-gradient(135deg, var(--brass-bright), var(--brass));
+  box-shadow: 0 4px 16px rgba(242,184,7,.3); position:relative; z-index:6;
+  animation: tile-choice-banner-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tile-choice-banner-pulse{
+  0%, 100% { box-shadow: 0 4px 16px rgba(242,184,7,.3), 0 0 0 0 rgba(250,204,21,.5); }
+  50% { box-shadow: 0 4px 16px rgba(242,184,7,.3), 0 0 0 8px rgba(250,204,21,0); }
+}
+/* Only added on #board-grid for the one player who actually has to pick — everyone
+   else sees the same glowing board but with no hover affordance, since clicking
+   wouldn't do anything for them anyway. */
+#board-grid.tile-choosable .tile{ cursor:pointer; }
+#board-grid.tile-choosable .tile:hover{
+  outline: 3px solid #facc15; z-index:5; transform: scale(1.06);
+  box-shadow: 0 0 14px 4px rgba(250,204,21,.55);
 }
 
 /* Modal */

@@ -54,7 +54,7 @@
 
       <div class="tab-panel" id="tab-join">
         <label for="input-name-join">Tên cậu là gì</label>
-        <input type="text" id="input-name-join" maxlength="16" placeholder="e.g. Heist">
+        <input type="text" id="input-name-join" maxlength="16" placeholder="e.g. Nguyễn Văn Mười">
         <label for="input-room-code">Code Phòng</label>
         <input type="text" id="input-room-code" maxlength="5" placeholder="e.g. K7QXP" style="text-transform:uppercase">
         <button class="btn btn-block sfx-hover" id="btn-join-room">Tham Gia</button>
@@ -91,21 +91,21 @@
         <label class="rule-row">
           <input type="checkbox" id="rule-freeparking">
           <span>
-            <strong>Ô Nghỉ Ngời</strong>
-            <small>Cho phép tích lũy tiền bị trừ của người chơi, giẫm vào là húp trọn.</small>
+            <strong>Quỹ Học Bổng</strong>
+            <small>Cho phép tích lũy tiền bị trừ của người chơi, nhảy vào là húp trọn</small>
           </span>
         </label>
         <label class="rule-row">
           <input type="checkbox" id="rule-rentinjail">
           <span>
             <strong>Vẫn nhận tiền phí khi ở trong tù</strong>
-            <small>Bật (standard rule): Phí vẫn thu, dù đi tù.  Tắt: Đi tù là đi tù, không có phí gì hết.</small>
+            <small>Bật (standard rule): Phí vẫn thu, dù đi tù.      Tắt: Đi tù là đi tù, không có phí gì hết.</small>
           </span>
         </label>
         <div class="rule-row rule-numeric" id="rule-jailfine">
           <span>
-            <strong>Phí ra tù</strong>
-            <small>Lượng tiền mất để ra tù sớm, không thì cải tạo đủ tốt để ra thôi.</small>
+            <strong>Phí ra 'tù'</strong>
+            <small>Lượng tiền mất để ra `tù` sớm, không thì cải tạo đủ tốt để ra thôi.</small>
             <div class="numeric-input-row">
               <span class="numeric-prefix">$</span>
               <input type="number" id="input-jailfine" min="0" step="10" value="100">
@@ -154,6 +154,13 @@
             <small>Trong tù mà có người thì sẽ mất phí</small>
           </span>
         </label>
+        <label class="rule-row" id="rule-chance-teleport">
+          <input type="checkbox" id="rule-chance-teleport-toggle">
+          <span>
+            <strong>Phần thưởng cực lớn</strong>
+            <small>Thêm một phần thưởng là người chơi có thể chọn bất kì ô đất nào mình muốn để đến</small>
+          </span>
+        </label>
         <p id="rules-readonly-hint" class="muted" style="font-size:.8rem;">Only the host can change these.</p>
       </div>
 
@@ -170,11 +177,12 @@
       <div class="header-actions">
         <button class="icon-btn" id="btn-trades" style="display:none;">Trades<span class="badge" id="trades-badge" style="display:none;"></span></button>
         <button class="icon-btn" id="btn-properties" style="display:none;">Tài sản của Tui</button>
-        <button class="icon-btn icon-btn-danger" id="btn-bankrupt" style="display:none;">Phá sản</button>
+        <button class="icon-btn icon-btn-danger" id="btn-bankrupt" style="display:none;">Nghỉ học</button>
         <button class="icon-btn" id="btn-leave-game">Rời</button>
       </div>
     </div>
     <div id="winner-banner"></div>
+    <div id="tile-choice-banner" class="tile-choice-banner" style="display:none;"></div>
     <div class="game-body">
       <div class="board-wrap" id="board-wrap">
         <div id="board"><div id="board-grid"></div></div>

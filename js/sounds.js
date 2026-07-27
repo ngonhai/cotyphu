@@ -6,12 +6,30 @@
 // setup needed.
 
 const SOUND_FILES = {
-  gameStart:  'sounds/game-start.mp3',
-  jailIn:     'sounds/jail-in.mp3',
-  jailOut:    'sounds/jail-out.mp3',
-  diceRoll:   'sounds/roll-dice.mp3',
-  buyProperty:'sounds/buy-property.mp3',
-  buttonHover:'sounds/button-hover.mp3'
+  gameStart:       'sounds/game-start.mp3',
+  jailIn:          'sounds/jail-in.mp3',
+  jailOut:         'sounds/jail-out.mp3',
+  diceRoll:        'sounds/roll-dice.mp3',
+
+  buyProperty:     'sounds/buy-property-house.mp3',
+  buyUtility:      'sounds/buy-property-utility.mp3' ,
+  buyRailroad:     'sounds/buy-property-railway.mp3',
+
+  sellHouse:         'sounds/sell-house.mp3',
+  buildHouse:        'sounds/build-house.wav',
+  mortgage:           'sounds/sell-property.mp3',
+  unmortgage:         'sounds/unmortgage.mp3',
+  sellPropertyToBank: 'sounds/sell-property.mp3',
+
+  footstep:        'sounds/footstep.wav',
+  cardGain:        'sounds/card-gain.mp3',
+  cardLose:        'sounds/card-lose.mp3',
+  landOnGo:           'sounds/land-on-go.mp3',
+  landOnFreeParking:  'sounds/land-on-free-parking.mp3',
+  fullSet:            'sounds/full-set.mp3',
+
+  declineBuy:      'sounds/decline-buy.mp3',
+  buttonHover:     'sounds/button-hover.wav'
 };
 
 // Preload everything up front so the first play() has no delay.

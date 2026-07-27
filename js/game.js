@@ -33,6 +33,26 @@ const INCOME_TAX_RATE = 0.10;
 // client whose action caused the change.
 let prevStatusForSound = null;
 let prevJailForSound = {};
+let prevRollingForSound = false;
+let prevOwnerByTileForSound = {};
+let prevHousesByTileForSound = {};
+let prevMortgagedByTileForSound = {};
+let prevCardMoneyNonce = null;
+let prevDeclineBuyNonce = null;
+let prevPositionByUidForSound = {};
+let prevFullGroupOwnerForSound = {};
+// True once detectSoundEvents() has run at least once for the current room
+// connection. The very first tick after joining/reconnecting has no real
+// "before" state to compare against — without this, a mid-game reconnect
+// would misread every already-owned/already-mortgaged/already-built tile as
+// something that "just happened" and fire a burst of sounds. Sound-emitting
+// comparisons below are gated on this; baseline values are still recorded on
+// the priming tick so the very next real tick compares correctly.
+let soundBaselinePrimed = false;
+// Board tile indices for the Go and Free Parking spaces, looked up once from
+// BOARD (already loaded by the time this file runs) rather than hardcoded.
+const GO_TILE_INDEX = BOARD.find(t => t.type === 'go').i;
+const FREE_PARKING_TILE_INDEX = BOARD.find(t => t.type === 'free').i;
 // ---------- 2. Firebase read/write helpers ----------
 
 function roomRef(path){ return db.ref('rooms/' + ROOM_ID + (path ? '/' + path : '')); }
@@ -44,11 +64,21 @@ function subscribeRoom(){
   if (typeof moneyDeltaByUid !== 'undefined') moneyDeltaByUid = {};
   prevStatusForSound = null;
   prevJailForSound = {};
+  prevRollingForSound = false;
+  prevOwnerByTileForSound = {};
+  prevHousesByTileForSound = {};
+  prevMortgagedByTileForSound = {};
+  prevCardMoneyNonce = null;
+  prevDeclineBuyNonce = null;
+  prevPositionByUidForSound = {};
+  prevFullGroupOwnerForSound = {};
+  soundBaselinePrimed = false;
+  afkHandledUids = new Set();
   unsubscribeRoom();
   activeRoomListenerRef = roomRef();
   activeRoomListenerRef.on('value', snap => {
     state = snap.val();
-    if (!state){ showToast('Không thấy room (hoặc code đã cũ).'); goToLobby(); return; }
+    if (!state){ showToast('Không thấy room (hoặc code đã cũ)'); goToLobby(); return; }
     // Self-healing: if a roll animation flag is left over from a dropped connection
     // (the roller's tab closed mid-roll), any client clears it after a grace period.
     // Safe because turnPhase never changes during the animation window, so clearing
@@ -74,6 +104,8 @@ function subscribeRoom(){
 // exactly once per real event, for every client (not just the one who caused it).
 // Add new sound triggers here following the same before/after comparison pattern.
 function detectSoundEvents(){
+  const firstTick = !soundBaselinePrimed;
+
   if (prevStatusForSound === 'lobby' && state.status === 'playing'){
     playSound('gameStart');
   }
@@ -86,8 +118,104 @@ function detectSoundEvents(){
       if (wasJailedBefore === false && isJailedNow === true) playSound('jailIn');
       if (wasJailedBefore === true && isJailedNow === false) playSound('jailOut');
       prevJailForSound[uid] = isJailedNow;
+
+      // Landing exactly on Go or Free Parking. Guarded on `!firstTick` so
+      // reconnecting while already sitting on one of these tiles doesn't fire
+      // a sound — only an actual arrival (position changing this tick) counts.
+      const posNow = state.players[uid].position;
+      const posBefore = prevPositionByUidForSound[uid];
+      if (!firstTick && posBefore !== undefined && posNow !== posBefore){
+        if (posNow === GO_TILE_INDEX) playSound('landOnGo');
+        if (posNow === FREE_PARKING_TILE_INDEX) playSound('landOnFreeParking');
+      }
+      prevPositionByUidForSound[uid] = posNow;
     }
   }
+
+  // `rolling` is a shared field (set by rollDice(), cleared once the hop
+  // animation finishes) — its false→true edge is the moment a roll starts,
+  // synced to everyone via Firebase regardless of whose turn it is.
+  const isRollingNow = !!state.rolling;
+  if (!prevRollingForSound && isRollingNow) playSound('diceRoll');
+  prevRollingForSound = isRollingNow;
+
+  // Chance/Community Chest cards that change the drawing player's money write a
+  // one-shot `cardMoneyEvent` marker (see announceCardMoney() near drawCard()).
+  // Guarded on prevCardMoneyNonce !== null so reconnecting mid-game (where
+  // state.cardMoneyEvent may already hold an old nonce from before we joined)
+  // doesn't fire a sound for an event that already happened.
+  if (state.cardMoneyEvent && state.cardMoneyEvent.nonce){
+    if (prevCardMoneyNonce !== null && state.cardMoneyEvent.nonce !== prevCardMoneyNonce){
+      playSound(state.cardMoneyEvent.delta >= 0 ? 'cardGain' : 'cardLose');
+    }
+    prevCardMoneyNonce = state.cardMoneyEvent.nonce;
+  }
+
+  // declineBuy() already writes this marker (see game actions) — same
+  // one-shot-nonce pattern as cardMoneyEvent above.
+  if (state.declineBuyEvent && state.declineBuyEvent.nonce){
+    if (prevDeclineBuyNonce !== null && state.declineBuyEvent.nonce !== prevDeclineBuyNonce){
+      playSound('declineBuy');
+    }
+    prevDeclineBuyNonce = state.declineBuyEvent.nonce;
+  }
+
+  if (state.properties){
+    for (const idx in state.properties){
+      const p = state.properties[idx];
+      const ownerNow = p.owner || null;
+      const ownerBefore = prevOwnerByTileForSound[idx] || null;
+      const housesNow = p.houses || 0;
+      const housesBefore = prevHousesByTileForSound[idx] || 0;
+      const mortgagedNow = !!p.mortgaged;
+      const mortgagedBefore = !!prevMortgagedByTileForSound[idx];
+
+      // Every comparison below is gated on `!firstTick` — on the priming tick
+      // we only want to record baselines, never fire a sound for tiles that
+      // were already bought/built/mortgaged before we connected.
+      if (!firstTick){
+        if (!ownerBefore && ownerNow){
+          const t = BOARD[idx];
+          if (t.type === 'railroad') playSound('buyRailroad');
+          else if (t.type === 'utility') playSound('buyUtility');
+          else playSound('buyProperty');
+        } else if (ownerBefore && !ownerNow){
+          if (!state.players?.[ownerBefore]?.bankrupt) playSound('sellPropertyToBank');
+        }
+
+        if (ownerNow && ownerNow === ownerBefore && housesNow < housesBefore){
+          playSound('sellHouse');
+        }
+        if (ownerNow && ownerNow === ownerBefore && housesNow > housesBefore){
+          playSound('buildHouse');
+        }
+
+        if (!mortgagedBefore && mortgagedNow) playSound('mortgage');
+        if (mortgagedBefore && !mortgagedNow) playSound('unmortgage');
+      }
+
+      prevOwnerByTileForSound[idx] = ownerNow;
+      prevHousesByTileForSound[idx] = housesNow;
+      prevMortgagedByTileForSound[idx] = mortgagedNow;
+    }
+
+    // A color group (railroads/utilities have no `.group`, so they're
+    // naturally excluded) just became fully owned by one player. Re-derives
+    // full ownership fresh each tick rather than reusing the per-tile loop
+    // above, since a group's completeness depends on ALL its tiles at once.
+    const groups = [...new Set(BOARD.filter(t => t.group).map(t => t.group))];
+    groups.forEach(g => {
+      const tiles = BOARD.filter(t => t.group === g);
+      const owners = tiles.map(t => state.properties[t.i]?.owner || null);
+      const fullOwner = (owners[0] && owners.every(o => o === owners[0])) ? owners[0] : null;
+      if (!firstTick && fullOwner && fullOwner !== prevFullGroupOwnerForSound[g]){
+        playSound('fullSet');
+      }
+      prevFullGroupOwnerForSound[g] = fullOwner;
+    });
+  }
+
+  soundBaselinePrimed = true;
 }
 
 // Detaches the live Firebase listener. Without this, a player who's left back to the
@@ -157,13 +285,17 @@ function teardownPresence(){
 // fresh data and bails out immediately if the player's already bankrupt, so a second
 // call from another client just becomes a harmless no-op, the same pattern already
 // used for the "rolling" self-heal above.
+let afkHandledUids = new Set();
+
 function checkAfkTimeouts(){
   if (!state || state.status !== 'playing' || !state.players) return;
   const now = Date.now();
   Object.keys(state.players).forEach(uid => {
     const p = state.players[uid];
-    if (!p || p.bankrupt) return;
+    if (!p || p.bankrupt){ afkHandledUids.delete(uid); return; }
+    if (afkHandledUids.has(uid)) return;
     if (p.connected === false && typeof p.lastSeen === 'number' && (now - p.lastSeen) >= AFK_BANKRUPT_MS){
+      afkHandledUids.add(uid);
       log(`⏱️ ${p.name} mất kết nối thật rồi hic`);
       handleBankruptcy(uid, p.debtTo || null);
     }
@@ -209,9 +341,9 @@ async function createRoom(name, maxPlayers, startingMoney){
   const room = {
     hostUid: MY_UID,
     status: 'lobby',
-    settings: { startingMoney: startMoney, freeParkingJackpot: true, maxPlayers, requireFullSetToBuild: true, tradingEnabled: true, cashRuleMode: 'sell', collectRentIfOwnerInJail: false, jailFineAmount: 150, goBonusEnabled: false, goBonusAmount: 100, auctionEnabled: false, auctionRailwaysEnabled: false, jailVisitBonusEnabled: true },
+    settings: { startingMoney: startMoney, freeParkingJackpot: true, maxPlayers, requireFullSetToBuild: true, tradingEnabled: true, cashRuleMode: 'sell', collectRentIfOwnerInJail: false, jailFineAmount: 150, goBonusEnabled: false, goBonusAmount: 100, auctionEnabled: false, auctionRailwaysEnabled: false, jailVisitBonusEnabled: true, chanceTeleportEnabled: false },
     players: {
-      [MY_UID]: { name, color, money: startMoney, position: 0, inJail:false, jailTurns:0, bankrupt:false, jailFreeCards:0, debtTo: null }
+      [MY_UID]: { name, color, money: startMoney, position: 0, inJail:false, jailTurns:0, bankrupt:false, jailFreeCards:0, debtTo: null, skipNextTurn:false }
     },
     turnOrder: [MY_UID],
     currentTurn: MY_UID,
@@ -222,6 +354,7 @@ async function createRoom(name, maxPlayers, startingMoney){
     pendingBuy: null,
     pendingAuction: null,
     pendingRailAuction: null,
+    pendingTileChoice: null,
     pendingCard: null,
     freeParkingPot: 0,
     log: {},
@@ -238,12 +371,12 @@ async function createRoom(name, maxPlayers, startingMoney){
 async function joinRoom(code, name){
   ROOM_ID = code.toUpperCase();
   const snap = await roomRef().get();
-  if (!snap.exists()){ showToast("Không có phòng như vậy nhé."); ROOM_ID = null; return false; }
+  if (!snap.exists()){ showToast("Không có phòng như vậy nhé!"); ROOM_ID = null; return false; }
   const room = snap.val();
 
   if (isRoomExpired(room)){
      await roomRef().remove();
-     showToast("Phòng đã hết hạn và bị xóa.");
+     showToast("Phòng đã hết hạn. LH:0123456789 để báo cáo");
      ROOM_ID = null;
      return false;
    }
@@ -275,7 +408,7 @@ async function joinRoom(code, name){
     subscribeRoom();
     setupPresence('spectators');
     showScreen('game');
-    showToast(room.status === 'Đã kết thúc' ? 'Tham gia với tư cách là khán giả' : 'Game đã bắt đầu — bạn không phải tỷ phú.');
+    showToast(room.status === 'Đã kết thúc' ? 'Tham gia với tư cách là khán giả' : 'Game đã bắt đầu — bạn không phải tỷ phú');
     return true;
   }
 
@@ -288,7 +421,7 @@ async function joinRoom(code, name){
   const color = TOKEN_COLORS.find(c => !usedColors.includes(c)) || TOKEN_COLORS[existing.length % TOKEN_COLORS.length];
   await roomRef('players/' + MY_UID).set({
     name, color, money: room.settings?.startingMoney ?? 1500, position:0,
-    inJail:false, jailTurns:0, bankrupt:false, jailFreeCards:0, debtTo: null
+    inJail:false, jailTurns:0, bankrupt:false, jailFreeCards:0, debtTo: null, skipNextTurn:false
   });
   location.hash = ROOM_ID;
   subscribeRoom();
@@ -421,7 +554,7 @@ async function movePlayer(uid, steps){
     updates[`players/${uid}/money`] = player.money + 200;
   }
   await roomRef().update(updates);
-  if (passedGo) log(`${player.name} đi qua Quê Gốc và dược nhận $200.`);
+  if (passedGo) log(`${player.name} đi qua Về Quê và dược nhận 200k₫.`);
   await resolveTile(uid, newPos);
 }
 
@@ -435,7 +568,7 @@ async function resolveTile(uid, tileIndex){
       const bonus = Number(room.settings.goBonusAmount);
       const amt = Number.isFinite(bonus) && bonus >= 0 ? bonus : 200;
       await roomRef(`players/${uid}/money`).set(player.money + amt);
-      log(`${player.name} nhảy chính xác vào Quê Gốc nên nhận thêm $${amt} bố thí!`);
+      log(`${player.name} nhảy chính xác vào Về Quê nên nhận thêm ${amt}k₫ bố thí!`);
     } else {
       log(`${player.name} đến ô ${tile.name}.`);
     }
@@ -450,12 +583,12 @@ async function resolveTile(uid, tileIndex){
       const jailedCount = Object.values(room.players).filter(p => p.inJail && !p.bankrupt).length;
       if (jailedCount > 0){
         const fine = 25 * jailedCount;
-        log(`${player.name} thăm tù và trả $${fine} — ${jailedCount} vì có ${jailedCount} người trong tù ($25/tử tù)`);
+        log(`${player.name} thăm khu học Quân sự và trả ${fine}k₫ — ${jailedCount} vì có ${jailedCount} người bên trong (25k₫/người)`);
         const inDebt = await chargePlayer(uid, fine, null);
         if (!inDebt) await finishAction(uid);
         return;
       } else {
-        log(`${player.name} thăm quan tù miễn phí — Không ai ở trong tù.`);
+        log(`${player.name} đến khu học Quân sự miễn phí — Không ai ở trong.`);
       }
     } else {
       log(`${player.name} đến ô ${tile.name}.`);
@@ -466,11 +599,14 @@ async function resolveTile(uid, tileIndex){
   if (tile.type === 'free'){
     const pot = room.freeParkingPot || 0;
     if (room.settings?.freeParkingJackpot && pot > 0){
+      // House rule: collecting a non-zero pot costs you your next turn. If the pot is
+      // 0 (rule on but nothing accumulated yet), landing here is a free no-op — no skip.
       await roomRef().update({
         [`players/${uid}/money`]: player.money + pot,
+        [`players/${uid}/skipNextTurn`]: true,
         freeParkingPot: 0
       });
-      log(`${player.name} dừng chân Nghỉ Ngơi và bú $${pot} từ Quỹ!`);
+      log(`${player.name} dừng chân Nghỉ Ngơi và bú ${pot}k₫ từ Quỹ — nhưng phải bỏ lượt kế tiếp!`);
     } else {
       log(`${player.name} dừng chân Nghỉ Ngơi.`);
     }
@@ -478,7 +614,7 @@ async function resolveTile(uid, tileIndex){
     return;
   }
   if (tile.type === 'gotojail'){
-    await sendToJail(uid, 'đi Tù ngay');
+    await sendToJail(uid, 'đi \'Tù\' ngay');
     await finishAction(uid);
     return;
   }
@@ -486,7 +622,7 @@ async function resolveTile(uid, tileIndex){
       const owed = (tile.taxKind === 'income')
         ? Math.round(player.money * INCOME_TAX_RATE)
         : tile.amount;
-      log(`${player.name} nhảy vào ô ${tile.name} và trả $${owed}.`);
+      log(`${player.name} nhảy vào ô ${tile.name} và trả ${owed}k₫.`);
       const inDebt = await chargePlayer(uid, owed, null);
       if (!inDebt) await finishAction(uid);
       return;
@@ -505,7 +641,7 @@ async function resolveTile(uid, tileIndex){
       return;
     }
     if (!pdata.owner){
-      log(`${player.name} nhảy vào ô ${tile.name} (chưa chủ, giá $${tile.price}).`);
+      log(`${player.name} nhảy vào ô ${tile.name} (đang gọi vốn, giá ${tile.price}k₫).`);
       await roomRef('pendingBuy').set({ tileIndex, uid });
       await roomRef('turnPhase').set('action');
     } else if (pdata.owner === uid){
@@ -513,7 +649,7 @@ async function resolveTile(uid, tileIndex){
       if (justUnlocked){
         await roomRef(`properties/${tileIndex}/landedSincePurchase`).set(true);
       }
-      log(`${player.name} đến đất của mình, ${tile.name}.${justUnlocked ? ' (có thể xây BĐS rồi.)' : ''}`);
+      log(`${player.name} đến đất của mình, ${tile.name}.${justUnlocked ? ' (có thể up các tòa nhà rồi.)' : ''}`);
       await finishAction(uid);
     } else if (pdata.mortgaged){
       log(`${player.name} đến ô ${tile.name}, nhưng là tài sản thế chấp — nên không mất phí`);
@@ -595,7 +731,7 @@ async function chargePlayer(uid, amount, toUid){
   }
   await roomRef().update(updates);
   if (wentIntoDebt){
-    log(`⚠️ ${player.name} không đủ tiền và đang thiếu $${Math.abs(newMoney)}.`);
+    log(`⚠️ ${player.name} không đủ tiền và đang thiếu ${Math.abs(newMoney)}k₫.`);
   }
   return wentIntoDebt;
 }
@@ -710,6 +846,7 @@ async function handleBankruptcy(uid, creditorUid, opts){
     updates['pendingBuy'] = null;
     updates['pendingAuction'] = null;
     updates['pendingRailAuction'] = null;
+    updates['pendingTileChoice'] = null;
     updates['doublesStreak'] = 0;
   }
   await roomRef().update(updates);
@@ -742,10 +879,23 @@ function pickWeightedCard(deck){
   return deck[deck.length - 1]; // float rounding fallback
 }
 
+// Writes a one-shot marker so every connected client (via detectSoundEvents())
+// plays a "gained money"/"lost money" sound in sync, right when a Chance/Chest
+// card changes the drawing player's money. `delta` is signed: positive = gain,
+// negative = pay. Call this alongside (not instead of) the actual money update.
+async function announceCardMoney(delta){
+  if (!delta) return;
+  await roomRef('cardMoneyEvent').set({ delta, nonce: Date.now() });
+}
+
 async function drawCard(uid, deckType){
-  const deck = deckType === 'chance' ? CHANCE_CARDS : CHEST_CARDS;
-  const card = pickWeightedCard(deck);
   const room = (await roomRef().get()).val();
+  const rawDeck = deckType === 'chance' ? CHANCE_CARDS : CHEST_CARDS;
+  // House rule "Phần thưởng cực lớn" (chanceTeleportEnabled, default off): the
+  // teleport-anywhere card only exists in the drawable deck while this is on — off by
+  // default so a table doesn't get this powerful an effect without opting in.
+  const deck = room.settings?.chanceTeleportEnabled ? rawDeck : rawDeck.filter(c => c.action !== 'choose_tile');
+  const card = pickWeightedCard(deck);
   const player = room.players[uid];
   log(`${player.name} chọn ${deckType==='chance'?'Cơ Hội':'Túi Mù'} nội dụng: "${card.text}"`);
   if (uid === MY_UID && typeof showToast === 'function') showToast(card.text);
@@ -756,6 +906,7 @@ async function drawCard(uid, deckType){
       await roomRef(`players/${uid}/position`).set(card.to);
       if (card.collectGo && passesGo){
         await roomRef(`players/${uid}/money`).set(player.money + 200);
+        await announceCardMoney(200);
       }
       await resolveTile(uid, card.to);
       return;
@@ -768,6 +919,7 @@ async function drawCard(uid, deckType){
     }
     case 'cash': {
       const inDebt = await chargePlayer(uid, -card.amount, null);
+      await announceCardMoney(card.amount);
       if (!inDebt) await finishAction(uid);
       return;
     }
@@ -776,7 +928,7 @@ async function drawCard(uid, deckType){
       await finishAction(uid);
       return;
     case 'gotojail':
-      await sendToJail(uid, 'Đi tù thay bạn thân');
+      await sendToJail(uid, 'Đi học Quân sự thay bạn thân');
       await finishAction(uid);
       return;
     case 'repairs': {
@@ -786,6 +938,7 @@ async function drawCard(uid, deckType){
         if (p.owner === uid){ total += p.houses===5 ? card.hotel : p.houses*card.house; }
       });
       const inDebt = await chargePlayer(uid, total, null);
+      await announceCardMoney(-total);
       if (!inDebt) await finishAction(uid);
       return;
     }
@@ -805,7 +958,8 @@ async function drawCard(uid, deckType){
         updates['turnPhase'] = 'debt';
       }
       await roomRef().update(updates);
-      if (inDebt) log(`⚠️ ${player.name} không đủ tiền và đang thiếu $${Math.abs(newMoney)}.`);
+      await announceCardMoney(-total);
+      if (inDebt) log(`⚠️ ${player.name} không đủ tiền và đang thiếu ${Math.abs(newMoney)}k₫.`);
       if (!inDebt) await finishAction(uid);
       return;
     }
@@ -824,6 +978,7 @@ async function drawCard(uid, deckType){
       });
       updates[`players/${uid}/money`] = player.money + total;
       await roomRef().update(updates);
+      await announceCardMoney(total);
       await finishAction(uid);
       return;
     }
@@ -832,7 +987,7 @@ async function drawCard(uid, deckType){
       const next = rails.find(i => i > player.position) ?? rails[0];
       const passesGo = next < player.position;
       await roomRef(`players/${uid}/position`).set(next);
-      if (passesGo) await roomRef(`players/${uid}/money`).set(player.money + 200);
+      if (passesGo){ await roomRef(`players/${uid}/money`).set(player.money + 200); await announceCardMoney(200); }
       const fresh = (await roomRef().get()).val();
       const pdata = fresh.properties[next];
       if (pdata.owner && pdata.owner !== uid && fresh.players[pdata.owner]?.inJail && fresh.settings?.collectRentIfOwnerInJail === false){
@@ -852,11 +1007,40 @@ async function drawCard(uid, deckType){
       const next = utils.find(i => i > player.position) ?? utils[0];
       const passesGo = next < player.position;
       await roomRef(`players/${uid}/position`).set(next);
-      if (passesGo) await roomRef(`players/${uid}/money`).set(player.money + 200);
+      if (passesGo){ await roomRef(`players/${uid}/money`).set(player.money + 200); await announceCardMoney(200); }
       await resolveTile(uid, next);
       return;
     }
+    case 'choose_tile': {
+      // Rare card: instead of resolving a destination now, park the turn here and let
+      // chooseTileDestination() (triggered by the player clicking a tile — see onTileClick
+      // in ui.js) finish it once they've picked. Nothing else about the turn advances
+      // until that happens; renderTileChoiceOverlay() in ui.js is what dims the rest of
+      // the UI and lights up the board for every connected client meanwhile.
+      await roomRef('pendingTileChoice').set({ uid, collectGo: !!card.collectGo });
+      await roomRef('turnPhase').set('action');
+      return;
+    }
   }
+}
+
+// Finishes the 'choose_tile' Chance card once the player has clicked a tile to
+// teleport to (see onTileClick in ui.js, which routes clicks here instead of opening
+// the property detail modal while state.pendingTileChoice is theirs to resolve).
+async function chooseTileDestination(tileIndex){
+  if (!state.pendingTileChoice || state.pendingTileChoice.uid !== MY_UID) return;
+  const { collectGo } = state.pendingTileChoice;
+  const uid = MY_UID;
+  const room = (await roomRef().get()).val();
+  const player = room.players[uid];
+  const passesGo = tileIndex < player.position;
+  await roomRef('pendingTileChoice').set(null);
+  await roomRef(`players/${uid}/position`).set(tileIndex);
+  if (collectGo && passesGo){
+    await roomRef(`players/${uid}/money`).set(player.money + 200);
+  }
+  log(`✨ ${player.name} dùng vận đỏ, dịch chuyển thẳng đến ${BOARD[tileIndex].name}!`);
+  await resolveTile(uid, tileIndex);
 }
 
 async function buyProperty(){
@@ -864,8 +1048,17 @@ async function buyProperty(){
   const { tileIndex } = state.pendingBuy;
   const tile = BOARD[tileIndex];
   const player = state.players[MY_UID];
-  if (player.money < tile.price) { showToast("Không đủ money."); return; }
-  playSound('buyProperty');
+  if (player.money < tile.price) { showToast("Không đủ money !!!"); return; }
+  
+  // playSound('buyProperty');
+  if (tile.type === 'property') {
+    playSound('buyProperty');
+  } else if (tile.type === 'utility') {
+    playSound('buyUtility');
+  } else if (tile.type === 'railroad') {
+    playSound('buyRailroad');
+  }
+
   await roomRef().update({
     [`properties/${tileIndex}/owner`]: MY_UID,
     [`players/${MY_UID}/money`]: player.money - tile.price,
@@ -873,7 +1066,7 @@ async function buyProperty(){
     [`properties/${tileIndex}/purchasePrice`]: tile.price,
     pendingBuy: null
   });
-  log(`${player.name} mua ${tile.name} với giá $${tile.price}.`);
+  log(`${player.name} mua ${tile.name} với giá ${tile.price}k₫.`);
   await finishAction(MY_UID);
 }
 
@@ -884,6 +1077,7 @@ async function declineBuy(){
   const key = player.money < tile.price ? 'declineBuy_cantAfford' : 'declineBuy_choice';
   log(pickLine(key, { name: player.name, tile: tile.name }));
   await roomRef('pendingBuy').set(null);
+  await roomRef('declineBuyEvent').set({ nonce: Date.now() });
   await finishAction(MY_UID);
 }
 
@@ -915,15 +1109,15 @@ async function bidOnAuction(increment){
   if (!player || player.bankrupt) return;
   // House rule (turn-based bidding, no spamming): you can't raise your own bid again
   // until someone else outbids you.
-  if (auction.currentBidder === MY_UID){ showToast("Đợi người khác nâng giá rồi bạn sẽ tiếp tục đấu giá."); return; }
+  if (auction.currentBidder === MY_UID){ showToast("Bạn đang đấu giá cao nhất gòi"); return; }
   const newBid = auction.currentBid + increment;
-  if (player.money < newBid){ showToast("Không đủ tiền đấu giá."); return; }
+  if (player.money < newBid){ showToast("Không đủ tiền đấu giá..."); return; }
   await roomRef('pendingAuction').update({
     currentBid: newBid,
     currentBidder: MY_UID,
     endsAt: Date.now() + AUCTION_BID_WINDOW_MS
   });
-  log(`${player.name} ra giá $${newBid} cho ${BOARD[auction.tileIndex].name}.`);
+  log(`${player.name} ra giá ${newBid}k₫ cho ${BOARD[auction.tileIndex].name}.`);
 }
 
 // Finalizes a live auction once its bid window has passed — see the self-heal call in
@@ -942,10 +1136,10 @@ async function resolveAuctionIfExpired(){
     updates[`properties/${auction.tileIndex}/landedSincePurchase`] = false;
     updates[`players/${auction.currentBidder}/money`] = winner.money - auction.currentBid;
     await roomRef().update(updates);
-    log(`🔨 ${winner.name} bú ${tile.name} với giá $${auction.currentBid}.`);
+    log(`🔨 ${winner.name} bú ${tile.name} với giá ${auction.currentBid}k₫.`);
   } else {
     await roomRef().update(updates);
-    log(`Ai cũng chê ${tile.name} — nên ẻm vẫn cô đơn.`);
+    log(`Ai cũng chê ${tile.name} — nên ẻm vẫn cô đơn`);
   }
   await finishAction(auction.forUid);
 }
@@ -962,7 +1156,7 @@ async function presentRailroadAuctionChoice(uid, tileIndex, room, tile, player){
   const pdata = room.properties[tileIndex];
   const declined = pdata.auctionDeclined || {};
   if (pdata.auctionHighBidder === uid){
-    log(`${player.name} đến ô ${tile.name} — và là người dẫn đầu với giá $${pdata.auctionPrice}.`);
+    log(`${player.name} đến ô ${tile.name} — và là người dẫn đầu với giá ${pdata.auctionPrice}k₫.`);
     await finishAction(uid);
     return;
   }
@@ -971,7 +1165,7 @@ async function presentRailroadAuctionChoice(uid, tileIndex, room, tile, player){
     await finishAction(uid);
     return;
   }
-  const bidInfo = pdata.auctionPrice ? `Giá hiện tại $${pdata.auctionPrice} bởi ${room.players[pdata.auctionHighBidder]?.name}` : 'Chưa lên sàn đấu giá';
+  const bidInfo = pdata.auctionPrice ? `Giá hiện tại ${pdata.auctionPrice}k₫ bởi ${room.players[pdata.auctionHighBidder]?.name}` : 'Chưa lên sàn đấu giá';
   log(`${player.name} đến ô ${tile.name} , ${bidInfo}).`);
   await roomRef('pendingRailAuction').set({ tileIndex, uid });
   await roomRef('turnPhase').set('action');
@@ -986,15 +1180,15 @@ async function bidRailroadAuction(amount){
   const player = room.players[MY_UID];
   const minBid = (pdata.auctionPrice||0) + 20;
   const bid = Math.floor(Number(amount));
-  if (!Number.isFinite(bid) || bid < (minBid)){ showToast(`Giá ít cũng phải $${minBid}.`); return; }
-  if (player.money < bid){ showToast("Không đủ tiền."); return; }
+  if (!Number.isFinite(bid) || bid < (minBid)){ showToast(`Giá ít cũng phải ${minBid}k₫`); return; }
+  if (player.money < bid){ showToast("Không đủ tiền"); return; }
 
   const updates = {
     [`properties/${tileIndex}/auctionPrice`]: bid,
     [`properties/${tileIndex}/auctionHighBidder`]: MY_UID,
     pendingRailAuction: null
   };
-  log(`${player.name} bid $${bid} for ${tile.name}.`);
+  log(`${player.name} bid ${bid}k₫ for ${tile.name}.`);
 
   const declined = pdata.auctionDeclined || {};
   const eligible = room.turnOrder.filter(u => u !== MY_UID && !room.players[u].bankrupt && !declined[u]);
@@ -1008,7 +1202,7 @@ async function bidRailroadAuction(amount){
     updates[`properties/${tileIndex}/auctionHighBidder`] = null;
     updates[`properties/${tileIndex}/auctionDeclined`] = {};
     await roomRef().update(updates);
-    log(`${player.name} thành công chiếm ${tile.name} với giá $${bid}!`);
+    log(`${player.name} thành công chiếm ${tile.name} với giá ${bid}k₫!`);
     await finishAction(MY_UID);
     return;
   }
@@ -1038,7 +1232,7 @@ async function declineRailroadAuction(){
       updates[`properties/${tileIndex}/auctionPrice`] = 0;
       updates[`properties/${tileIndex}/auctionHighBidder`] = null;
       updates[`properties/${tileIndex}/auctionDeclined`] = {};
-      log(`${room.players[highBidder].name} bú ${tile.name} với giá $${pdata.auctionPrice} — do không còn ai đấu giá.`);
+      log(`${room.players[highBidder].name} bú ${tile.name} với giá ${pdata.auctionPrice}k₫ — do không còn ai đấu giá.`);
     } else {
       // Nobody ever bid — reset the pass list so it can be auctioned fresh next time.
       updates[`properties/${tileIndex}/auctionDeclined`] = {};
@@ -1061,7 +1255,7 @@ async function payJailFine(){
     updates['freeParkingPot'] = (state.freeParkingPot||0) + fine;
   }
   await roomRef().update(updates);
-  log(`${state.players[MY_UID].name} trả $${fine} để ra tòo.`);
+  log(`${state.players[MY_UID].name} trả ${fine}k₫ để ra tòo.`);
   await roomRef('turnPhase').set('end');
 }
 
@@ -1073,7 +1267,7 @@ async function useJailCard(){
     [`players/${MY_UID}/inJail`]: false,
     [`players/${MY_UID}/jailTurns`]: 0
   });
-  log(`${state.players[MY_UID].name} đã hối lộ quản ngục thành công.`);
+  log(`${state.players[MY_UID].name} đã hối lộ thành công`);
   await roomRef('turnPhase').set('end');
 }
 
@@ -1101,12 +1295,12 @@ async function rollForJail(){
     if (isDouble && attempt < 3){
       // 1st/2nd attempt doubles: freed, but stays put this turn.
       await roomRef().update({ [`players/${MY_UID}/inJail`]: false, [`players/${MY_UID}/jailTurns`]: 0 });
-      log(`${me.name} gieo xúc xắc đôi (${d1}-${d2}) nên ra tù.`);
+      log(`${me.name} gieo xúc xắc đôi (${d1}-${d2}) nên ra khỏi khu học Quân sự.`);
       await roomRef('turnPhase').set('end');
     } else if (isDouble){
       // 3rd attempt doubles: freed AND moves immediately, same as the classic rule.
       await roomRef().update({ [`players/${MY_UID}/inJail`]: false, [`players/${MY_UID}/jailTurns`]: 0 });
-      log(`${me.name} gieo xúc xắc đôi (${d1}-${d2}) vào lần thứ 3 nên ra tù và có thể đi!`);
+      log(`${me.name} gieo xúc xắc đôi (${d1}-${d2}) vào lần thứ 3 nên ra khỏi khu Quân sự và có thể đi!`);
       await movePlayer(MY_UID, steps);
     } else if (attempt >= 3){
       // 3rd attempt, no doubles: forced out at half the usual fine, and still stays put.
@@ -1116,7 +1310,7 @@ async function rollForJail(){
         releaseUpdates['freeParkingPot'] = (state.freeParkingPot||0) + fine;
       }
       await roomRef().update(releaseUpdates);
-      log(`${me.name} không gieo xúc xắc đôi lần nào, buộc phải trả $${fine} để ra tù.`);
+      log(`${me.name} không gieo xúc xắc đôi lần nào, buộc phải trả ${fine}k₫ để ra khỏi khu học Quân sự.`);
       await roomRef('turnPhase').set('end');
     } else {
       // 1st/2nd attempt, no doubles: still stuck, try again next turn.
@@ -1129,10 +1323,30 @@ async function rollForJail(){
 
 async function endTurn(){
   if (!isMyTurn() || state.turnPhase === 'debt') return;
-  const order = state.turnOrder;
-  const idx = order.indexOf(MY_UID);
-  const nextUid = order[(idx+1) % order.length];
-  await roomRef().update({ currentTurn: nextUid, turnPhase: 'roll', doublesStreak: 0 });
+  const room = (await roomRef().get()).val();
+  const order = room.turnOrder;
+  const updates = {};
+  let idx = order.indexOf(MY_UID);
+  let nextUid;
+  // Free Parking house rule: whoever last collected a non-zero pot has skipNextTurn
+  // set (see the 'free' tile branch in resolveTile). Walk past any such player —
+  // clearing their flag and handing the turn to the one after them — instead of
+  // just giving them the turn back; capped at order.length hops so a pathological
+  // all-skipped state can't loop forever.
+  for (let hop = 0; hop < order.length; hop++){
+    idx = (idx + 1) % order.length;
+    nextUid = order[idx];
+    if (room.players[nextUid]?.skipNextTurn){
+      updates[`players/${nextUid}/skipNextTurn`] = false;
+      log(`${room.players[nextUid].name} bỏ lượt này vì vừa hốt quỹ Nghỉ Ngơi.`);
+      continue;
+    }
+    break;
+  }
+  updates.currentTurn = nextUid;
+  updates.turnPhase = 'roll';
+  updates.doublesStreak = 0;
+  await roomRef().update(updates);
 }
 
 function canBuildOn(tileIndex){
@@ -1140,17 +1354,17 @@ function canBuildOn(tileIndex){
   if (tile.type !== 'property') return { ok:false, reason:'Không xây nà ở ô này được.' };
   const pdata = state.properties[tileIndex];
   if (!pdata || pdata.owner !== MY_UID) return { ok:false, reason:'Bạn không sở hữu ô này.' };
-  if (pdata.houses >= 5) return { ok:false, reason:'Ô này đã có khách sạn.' };
-  if (!isMyTurn()) return { ok:false, reason:'Chỉ có thể nâng BĐS trong lượt của bạn.' };
+  if (pdata.houses >= 5) return { ok:false, reason:'Ô này đã có Cơ sở hai.' };
+  if (!isMyTurn()) return { ok:false, reason:'Chỉ có thể xây lên tòa nhà trong lượt của bạn.' };
   const requireFullSet = state.settings?.requireFullSetToBuild !== false;
   if (requireFullSet){
-    if (!ownsFullGroup(MY_UID, tile.group)) return { ok:false, reason:'Bạn cần mua trọn set màu để bắt đầu nâng BĐS.' };
+    if (!ownsFullGroup(MY_UID, tile.group)) return { ok:false, reason:'Bạn cần mua trọn set màu để bắt đầu nâng các tòa nhà.' };
     return { ok:true };
   }
   // House rule: no full-set requirement, but you must be standing exactly on this tile right now,
   // and it must not be the same visit you bought it on (i.e. you need to land here again later).
-  if (state.players[MY_UID].position !== tileIndex) return { ok:false, reason:'House rule: Đến đúng ô này thì có thể nâng BĐS.' };
-  if (!pdata.landedSincePurchase) return { ok:false, reason:'Vừa mua xong — lần sau đến là ngon luôn (nâng BĐS).' };
+  if (state.players[MY_UID].position !== tileIndex) return { ok:false, reason:'House rule: Đến đúng ô này thì có thể nâng các tòa nhà.' };
+  if (!pdata.landedSincePurchase) return { ok:false, reason:'Vừa mua xong — lần sau đến là ngon luôn (nâng các tòa nhà).' };
   return { ok:true };
 }
 
@@ -1161,12 +1375,12 @@ async function buildHouse(tileIndex){
   const tile = BOARD[tileIndex];
   const pdata = state.properties[tileIndex];
   const player = state.players[MY_UID];
-  if (player.money < tile.house) { showToast("Đéo đủ tiền 😭."); return; }
+  if (player.money < tile.house) { showToast("Đéo đủ tiền 😭:(((("); return; }
   await roomRef().update({
     [`properties/${tileIndex}/houses`]: pdata.houses + 1,
     [`players/${MY_UID}/money`]: player.money - tile.house
   });
-  log(`${player.name} đã xây ${pdata.houses+1===5?'một khách sạn':'một BĐS'} trên đất ${tile.name}.`);
+  log(`${player.name} đã có ${pdata.houses+1===5?'một cơ sở hai':'tòa nhà'} trên đất ${tile.name}.`);
 }
 
 async function sellHouse(tileIndex){
@@ -1196,7 +1410,7 @@ async function toggleMortgage(tileIndex){
       showToast('House rule: Bán bất động sản — là bán chứ không thế chấp');
       return;
     }
-    if (pdata.houses > 0){ showToast('Tháo dỡ BĐS trên đất này trước đã'); return; }
+    if (pdata.houses > 0){ showToast('Tháo dỡ các tòa nhà trên đất này trước đã'); return; }
     await roomRef().update({
       [`properties/${tileIndex}/mortgaged`]: true,
       [`players/${MY_UID}/money`]: player.money + Math.floor(tile.price/2)
@@ -1206,13 +1420,40 @@ async function toggleMortgage(tileIndex){
   } else {
     if (player.money < 0){ showToast("Tiền còn đéo có để trả nợ..."); return; }
     const cost = Math.floor(tile.price/2 * 1.1);
-    if (player.money < cost){ showToast(`Cần kiếm thêm $${cost-player.money}`); return; }
+    if (player.money < cost){ showToast(`Số tiền cần bù vào ${cost-player.money}k₫`); return; }
     await roomRef().update({
       [`properties/${tileIndex}/mortgaged`]: false,
       [`players/${MY_UID}/money`]: player.money - cost
     });
     log(`${player.name} trả đủ tiền thế chấp ${tile.name}.`);
   }
+}
+
+async function sellPropertyToBank(tileIndex){
+  const tile = BOARD[tileIndex];
+  const pdata = state.properties[tileIndex];
+  const player = state.players[MY_UID];
+  if (pdata.owner !== MY_UID) return;
+  if (pdata.houses > 0){ showToast('Bán hết các thứ trong trường này đã'); return; }
+  if (state.settings?.cashRuleMode !== 'sell'){
+    showToast('House rule: Chế độ Bán đang tắt — Thế chấp đi thôi');
+    return;
+  }
+  if (pdata.mortgaged){ showToast("Không thể bán một nơi đang thế chấp"); return; }
+  const refund = Math.floor(tile.price / 2);
+  await roomRef().update({
+    [`properties/${tileIndex}/owner`]: null,
+    [`properties/${tileIndex}/houses`]: 0,
+    [`properties/${tileIndex}/mortgaged`]: false,
+    [`properties/${tileIndex}/landedSincePurchase`]: false,
+    [`properties/${tileIndex}/purchasePrice`]: null,
+    [`properties/${tileIndex}/auctionPrice`]: 0,
+    [`properties/${tileIndex}/auctionHighBidder`]: null,
+    [`properties/${tileIndex}/auctionDeclined`]: {},
+    [`players/${MY_UID}/money`]: player.money + refund
+  });
+  log(`${player.name} bán ${tile.name} với giá ${refund}k₫.`);
+  await maybeResolveDebt(MY_UID);
 }
 
 function ownsFullGroup(uid, group){
@@ -1260,20 +1501,20 @@ function validateTrade(trade){
   const giver = state.players[trade.fromUid];
   const receiver = state.players[trade.toUid];
   if (!giver || !receiver || giver.bankrupt || receiver.bankrupt) return { valid:false, reason:'Không thể hẹn hò với người âm' };
-  if (giver.money < (trade.give.cash||0)) return { valid:false, reason:`${giver.name} bây giờ trên răng dưới d.ái` };
-  if (receiver.money < (trade.receive.cash||0)) return { valid:false, reason:`${receiver.name} bây giờ đã túng quẫn .` };
+  if (giver.money < (trade.give.cash||0)) return { valid:false, reason:`${giver.name} bây giờ trên răng dưới d.ái mất ròi` };
+  if (receiver.money < (trade.receive.cash||0)) return { valid:false, reason:`${receiver.name} bây giờ đã túng quẫn` };
   for (const idx of (trade.give.properties||[])){
     const p = state.properties[idx];
-    if (!p || p.owner !== trade.fromUid) return { valid:false, reason:`${BOARD[idx].name} không còn được sở hữu bởi ${giver.name}.` };
-    if (p.houses > 0) return { valid:false, reason:`${BOARD[idx].name} có BĐS — hãy chắc chắn chỉ bán đất trống.` };
+    if (!p || p.owner !== trade.fromUid) return { valid:false, reason:`${BOARD[idx].name} không còn được sở hữu bởi ${giver.name}` };
+    if (p.houses > 0) return { valid:false, reason:`${BOARD[idx].name} có một số tòa nhà — hãy chắc chắn chỉ bán đất trống` };
   }
   for (const idx of (trade.receive.properties||[])){
     const p = state.properties[idx];
     if (!p || p.owner !== trade.toUid) return { valid:false, reason:`${BOARD[idx].name} không còn được sở hữu bởi ${receiver.name}.` };
-    if (p.houses > 0) return { valid:false, reason:`${BOARD[idx].name} có BĐS — hãy chắc chắn chỉ bán đất trống.` };
+    if (p.houses > 0) return { valid:false, reason:`${BOARD[idx].name} có một số tòa nhà — hãy chắc chắn chỉ bán đất trống` };
   }
-  if ((trade.give.jailFreeCards||0) > (giver.jailFreeCards||0)) return { valid:false, reason:`${giver.name} không còn Jail-Free cards.` };
-  if ((trade.receive.jailFreeCards||0) > (receiver.jailFreeCards||0)) return { valid:false, reason:`${receiver.name} không còn Jail-Free cards.` };
+  if ((trade.give.jailFreeCards||0) > (giver.jailFreeCards||0)) return { valid:false, reason:`${giver.name} không còn Lượt-ra-ngoài miễn phí.` };
+  if ((trade.receive.jailFreeCards||0) > (receiver.jailFreeCards||0)) return { valid:false, reason:`${receiver.name} không còn Lượt-ra-ngoài miễn phí.` };
   return { valid:true };
 }
 
