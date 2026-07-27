@@ -1197,7 +1197,7 @@ function openTradeBuilder(prefill){
     if (giveCash===0 && receiveCash===0 && giveProps.length===0 && receiveProps.length===0 && giveJail===0 && receiveJail===0){
       showToast('Chưa có gì để đem vào giao dịch'); return;
     }
-    if (giveCash > state.players[MY_UID].money){ showToast("Bạn không đủ tiền mặt"); return; }
+    if (giveCash > 0 && giveCash > state.players[MY_UID].money){ showToast("Bạn không đủ tiền mặt"); return; }
     if (giveJail > (state.players[MY_UID].jailFreeCards||0)){ showToast("Không có nhiều lượt ra khỏi khu Quân sự miễn phí đến vậy đâu"); return; }
     proposeTrade({
       toUid,

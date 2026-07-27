@@ -1501,8 +1501,8 @@ function validateTrade(trade){
   const giver = state.players[trade.fromUid];
   const receiver = state.players[trade.toUid];
   if (!giver || !receiver || giver.bankrupt || receiver.bankrupt) return { valid:false, reason:'Không thể hẹn hò với người âm' };
-  if (giver.money < (trade.give.cash||0)) return { valid:false, reason:`${giver.name} bây giờ trên răng dưới d.ái mất ròi` };
-  if (receiver.money < (trade.receive.cash||0)) return { valid:false, reason:`${receiver.name} bây giờ đã túng quẫn` };
+  if ((trade.give.cash||0) > 0 && giver.money < trade.give.cash) return { valid:false, reason:`${giver.name} bây giờ trên răng dưới d.ái mất ròi` };
+  if ((trade.receive.cash||0) > 0 && receiver.money < trade.receive.cash) return { valid:false, reason:`${receiver.name} bây giờ đã túng quẫn` };
   for (const idx of (trade.give.properties||[])){
     const p = state.properties[idx];
     if (!p || p.owner !== trade.fromUid) return { valid:false, reason:`${BOARD[idx].name} không còn được sở hữu bởi ${giver.name}` };
@@ -1554,6 +1554,10 @@ async function respondTrade(tradeId, action){
     updates[`trades/${tradeId}/status`] = 'accepted';
     await roomRef().update(updates);
     log(pickLine('acceptTrade', {name: state.players[trade.toUid].name, fromName: state.players[trade.fromUid].name}));
+    // The cash swap may have just brought someone's balance back to zero or above —
+    // re-check both sides so a cleared debt lifts the debt banner / resumes their turn.
+    await maybeResolveDebt(trade.fromUid);
+    await maybeResolveDebt(trade.toUid);
   }
 }
 
