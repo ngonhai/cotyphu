@@ -31,6 +31,8 @@
       <div class="tab-panel active" id="tab-create">
         <label for="input-name-create">Tên cậu là gì</label>
         <input type="text" id="input-name-create" maxlength="16" placeholder="e.g. Sơn Tùng MVP">
+        <label>Quân cờ của cậu</label>
+        <div class="token-customizer" id="token-customizer-create"></div>
         <label for="select-max-players">Max người chơi</label>
         <select id="select-max-players">
           <option value="4">4</option>
@@ -55,6 +57,8 @@
       <div class="tab-panel" id="tab-join">
         <label for="input-name-join">Tên cậu là gì</label>
         <input type="text" id="input-name-join" maxlength="16" placeholder="e.g. Nguyễn Văn Mười">
+        <label>Quân cờ của cậu</label>
+        <div class="token-customizer" id="token-customizer-join"></div>
         <label for="input-room-code">Code Phòng</label>
         <input type="text" id="input-room-code" maxlength="5" placeholder="e.g. K7QXP" style="text-transform:uppercase">
         <button class="btn btn-block sfx-hover" id="btn-join-room">Tham Gia</button>
@@ -196,6 +200,26 @@
         <div id="action-bar"></div>
         <div id="log-panel"></div>
       </div>
+    </div>
+
+    <!-- Floating chat — open to both seated players and spectators. Fixed-position
+         overlay (not part of .game-body's flex layout) so it never shrinks the
+         board; see .chat-toggle-btn/.chat-panel in style.css for the desktop
+         (small floating card near the board) vs. mobile (near-fullscreen sheet,
+         since there's no room to show both chat and the board at once) treatment. -->
+    <button type="button" id="chat-toggle-btn" class="chat-toggle-btn" title="Chat">
+      💬<span id="chat-unread-badge" class="chat-unread-badge" style="display:none;"></span>
+    </button>
+    <div id="chat-panel" class="chat-panel hidden">
+      <div class="chat-panel-header">
+        <span>💬 Chat phòng</span>
+        <button type="button" id="chat-close-btn" class="chat-close-btn" title="Thu gọn">✕</button>
+      </div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <form id="chat-form" class="chat-form">
+        <input type="text" id="chat-input" maxlength="240" placeholder="Nhắn gì đó..." autocomplete="off">
+        <button type="submit" class="chat-send-btn">Gửi</button>
+      </form>
     </div>
   </section>
 

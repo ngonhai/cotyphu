@@ -31,9 +31,19 @@ const SOUND_FILES = {
   // effect whenever you have one; playSound() already no-ops safely if the file
   // is missing, so nothing else needs to change.
   teleport:        'sounds/teleport.mp3',
+  // Placeholder path — plays the instant the "đi đến bất cứ đâu" (choose_tile)
+  // Chance/Chest card is drawn, before the player picks a tile. Separate from
+  // `teleport` above, which plays later during the actual fly-to-tile animation.
+  // Swap this file in /sounds/ whenever you have one; nothing else needs to change.
+  bigReward:       'sounds/big-reward.mp3',
 
   declineBuy:      'sounds/decline-buy.mp3',
-  buttonHover:     'sounds/button-hover.wav'
+  buttonHover:     'sounds/button-hover.wav',
+  // Placeholder paths, same deal as `teleport` above — drop real files in
+  // /sounds/ with these exact names whenever you have them, nothing else
+  // needs to change.
+  endTurn:         'sounds/end-turn.mp3',
+  bankrupt:        'sounds/bankrupt.mp3'
 };
 
 // Preload everything up front so the first play() has no delay.

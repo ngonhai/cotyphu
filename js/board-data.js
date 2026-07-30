@@ -118,42 +118,59 @@ const CHANCE_CARDS = [
   { text: 'Lùi 1 bước. Tiến 3 bước', action: 'move', amount: 2 },
   { text: 'Khát quá! Đến chỗ ăn uống gần nhất', action: 'nearest_utility' },
   { text: 'Chủ nhật rảnh rỗi quá. Cho mỗi người chơi 50k₫', action: 'pay_each', amount: 50 },
-  { text: 'Họ rủ đi chơi mà từ chối, bù mỗi người chơi 150k₫', action: 'pay_each', amount: 150, weight:0.5 },
-  { text: 'Chúa thương tình, phát lúa cho mình 150k₫', action: 'cash', amount: 150 },
+  { text: 'Họ rủ đi chơi mà từ chối, bù mỗi người chơi 150k₫', action: 'pay_each', amount: 150, weight:0.3 },
+  { text: 'Chúa thương tình, phát lúa cho mình 150k₫', action: 'cash', amount: 150, weight:0.8 },
   { text: 'Ngừng lọ 1 hôm. Bú 100k₫ từ cô giáo', action: 'cash', amount: 100 },
   { text: 'Đi đến Circle K mua ít đồ', action: 'goto', to: 15, collectGo:true },
   { text: 'Đi đến Đại học Hà Nội', action: 'goto', to: 6, collectGo:true },
-  { text: '✨ Hà Nội Tour! Chọn BẤT KỲ ô nào trên bàn và teleport đến ✨', action: 'choose_tile', collectGo:true, weight:0.01 }
+  { text: '✨ Hà Nội Tour! Chọn BẤT KỲ ô nào trên bàn và teleport đến ✨', action: 'choose_tile', collectGo:true, weight:999 }
 ];
 
 const CHEST_CARDS = [
   { text: 'Về Quê ăn Tết. Nhận 200k₫', action: 'goto', to: 0, collectGo:true },
+  { text: 'Về Quê nghỉ hè. Nhận 200k₫', action: 'goto', to: 0, collectGo:true },
   { text: 'Nhận bố thí 200k₫ từ người lạ', action: 'cash', amount: 200 },
   { text: 'Học lại KTCT Mác-Lênin tốn 60k₫', action: 'cash', amount: -60 },
   { text: 'Ốm người thiêu, mất 50k₫', action: 'cash', amount: -50 },
   { text: 'Đô nết kênh MixiGaming 200k₫', action: 'cash', amount: -200, weight:0.5 },
+  { text: 'Từ chốn Linh Lang, sang động Đình Thôn. Thế mà tiêu mỗi 200k₫', action: 'cash', amount: -200, weight:0.5 },
   { text: 'Làm YouTube, nhận 50k₫ donate', action: 'cash', amount: 50 },
+  { text: 'Làm hộ bài, bú 50k₫', action: 'cash', amount: 50 },
   { text: 'Một lượt-ra-ngoài của khu Quân sự free. Giữ để dùng hoặc đem trao đổi', action: 'jailfree' },
-  { text: 'Cút luôn vào khu Quân sụ', action: 'gotojail', weight:1.1 },
+  { text: 'Cút luôn vào khu Quân sự', action: 'gotojail', weight:1.1 },
   { text: 'Tổ chức mừng thọ bản thân. Thu 50k₫ từ mỗi người chơi', action: 'collect_each', amount: 50 },
   { text: 'Bị mỗi người ném 100k₫ vào mặt', action: 'collect_each', amount: 100, weight:0.3 },
+  { text: 'Bị mọi người chơi some, thu mỗi 150k₫', action: 'collect_each', amount: 150, weight:0.07 },
+  { text: 'Chơi some mọi người, trả mỗi người 150k₫', action: 'pay_each', amount: 150, weight:0.1 },
+  { text: 'Bao trà sữa cho bạn bè 50k₫/mạng', action: 'pay_each', amount: 50, weight:0.4 },
+  { text: 'Mời mọi người bún đậu ở quán đường Nguyễn Ngọc Vũ 50k₫/mạng', action: 'pay_each', amount: 50, weight:0.4 },
+  { text: 'Thủng săm trên đường, sửa xe mất 70k₫', action: 'cash', amount: -70, weight:0.6 },
+  { text: 'Đi xe buýt, bị móc đuýt. -50k₫', action: 'cash', amount: -50, weight:0.7 },
   { text: 'Quỹ Nỗi-Buồn-Trượt-Môn quyên tặng 100k₫', action: 'cash', amount: 100 },
   { text: 'Trốn thuế. Thêm 20k₫', action: 'cash', amount: 20 },
-  { text: 'Không phải người Thanh Hóa. 36k₫ và 1 respect', action: 'cash', amount: 36 },
+  { text: 'Không phải người Thanh Hóa. Nhận 36k₫ và 1 respect', action: 'cash', amount: 36 },
   { text: 'Hỗ trợ học lại. Nhận mỗi người 10k₫', action: 'collect_each', amount: 10, weight:3 },
-  { text: 'Bảo hiểm nhân thọ. Bú 100k₫', action: 'cash', amount: 100 },
+  { text: 'Bảo hiểm nhân thọ. Bú 100k₫', action: 'cash', amount: 100, weight:0.9 },
+  { text: 'Đi hiến máu tình nguyện. Làm quà nho nhỏ 50k₫', action: 'cash', amount: 50 },
   { text: 'Bắt Taxi đi thi sáng mất 50k₫', action: 'cash', amount: -50 },
   { text: 'Đêm qua chơi đậm sâu! Nay tốn 100k₫ đi khám', action: 'cash', amount: -100 },
   { text: 'Đặt Xanh SM mất 150k₫', action: 'cash', amount: -150 },
   { text: 'Cháy nhà trọ. May mà chỉ mất 100k₫', action: 'cash', amount: -100, weight:0.9 },
   { text: 'Có người ném 25k₫ vào mặt rồi 7 chọ', action: 'cash', amount: 25 },
-  { text: 'Phí bảo kê BĐS: 40k₫/Nhà, 115k₫/CS2', action: 'repairs', house:40, hotel:115 },
-  { text: 'Thắng lô con 36. Nhận 10k₫', action: 'cash', amount: 10, weight:3 },
+  { text: 'Phí bảo kê BĐS: 40k₫/Nhà, 115k₫/CS2', action: 'repairs', house:40, hotel:115, weight:0.4 },
+  { text: 'Tiền sinh lời từ mặt bằng: 35k₫/Nhà, 110k₫/CS2', action: 'repairs', house:-35, hotel:-110, weight:0.4 },
+  { text: 'Đánh con 36, về con 63. Mất CMN 10k₫', action: 'cash', amount: -10, weight:3 },
   { text: 'Đi làm thêm. Nhận 100k₫', action: 'cash', amount: 100, weight:0.9 },
   { text: 'Thừa kế 100k₫ từ cháu họ', action: 'cash', amount: 100 }
 ];
 
 const TOKEN_COLORS = ['#E8613C', '#3E8FB0', '#8860D0', '#D4A72C', '#4FA187', '#D0668A', '#7A7F87', '#C9A227'];
+
+// Purely cosmetic — shown centered on a player's token, chosen for fun at the lobby
+// screen (see renderTokenCustomizer() in ui.js). '' is the first option, meaning "no
+// expression, just the plain color dot" — kept as a real selectable choice (not just
+// an implicit default) so it always renders in the same picker grid as everything else.
+const TOKEN_EMOJIS = ['', '😎','🤓','😈','🥳','👻','🤖','👽','🎩','🐯','🦊','🐸','🐼','🦁','🐰','🐶','🐱','🔥'];
 
 // Grid position on an 11x11 board (row, col), used for CSS placement.
 function tileGridPos(i){

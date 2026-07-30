@@ -114,3 +114,118 @@ function pickLine(key, vars = {}){
   const template = options[Math.floor(Math.random() * options.length)];
   return template.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : ''));
 }
+
+// ---------------------------------------------------------------------------
+// TOAST_MESSAGES — variety pools for showToast() (ui.js), with one important
+// difference from LOG_MESSAGES above: a toast needs to feel like a single
+// assistant giving *one* answer, not rephrasing itself mid-sentence. Spam-
+// clicking "Buy" with no money should show the exact same toast every time,
+// not a fresh random line on every click — that would read like the game is
+// babbling. So pickToastLine() below only rerolls when the *situation itself*
+// changes (a different key than whatever toast last showed); repeating the
+// same key in a row reuses the line it already picked.
+//
+// KEYED BY THE EXACT STRING each showToast(...) call already passes — this is
+// deliberate: pickToastLine() falls back to treating an unrecognized key as
+// the message itself, so every existing showToast("...") call site keeps
+// working untouched whether or not it has an entry here. Adding variety to a
+// toast that doesn't have one yet is just adding an array below with that same
+// exact string as one of the options — no call site needs to change.
+const TOAST_MESSAGES = {
+  'Tên thì đéo nhập': [
+    'Tên thì đéo nhập',
+    'Quên nhập tên rồi kìa',
+    'Tên đâu mà tạo phòng?',
+    'Điền tên vào đã nào bạn ơi'
+  ],
+  'Tên đâu?? Code đâu??': [
+    'Tên đâu?? Code đâu??',
+    'Thiếu tên hoặc code phòng rồi kìa',
+    'Điền đủ cả tên lẫn code đã'
+  ],
+  'Không đủ money !!!': [
+    'Không đủ money !!!',
+    'Nghèo thì đéo mua được đâu',
+    'Ví lép kẹp rồi, mua sao được',
+    'Không đủ tiền mua đất này đâu'
+  ],
+  'Bạn không đủ tiền mặt': [
+    'Bạn không đủ tiền mặt',
+    'Đưa cái đéo gì khi trong túi rỗng',
+    'Không đủ tiền mặt để đem đi trade đâu'
+  ],
+  'Đéo đủ tiền 😭:((((': [
+    'Đéo đủ tiền 😭:((((',
+    'Nghèo thì xây bằng niềm tin à 😭',
+    'Không đủ tiền xây nhà đâu bạn'
+  ],
+  'Không đủ tiền': [
+    'Không đủ tiền',
+    'Ví bạn không đủ cho khoản này đâu',
+    'Không đủ tiền đâu, xoay xở đi đã'
+  ],
+  'Không đủ tiền đấu giá...': [
+    'Không đủ tiền đấu giá...',
+    'Đấu giá bằng niềm tin à, tiền đâu?',
+    'Không đủ tiền để trả giá này đâu'
+  ],
+  'Nợ thì đéo lo... Xây cc 🐧': [
+    'Nợ thì đéo lo... Xây cc 🐧',
+    'Đang nợ ngập đầu mà đòi xây? 🐧',
+    'Trả nợ đi đã rồi hẵng xây'
+  ],
+  'Bạn đang không mắc nợ.': [
+    'Bạn đang không mắc nợ.',
+    'Có nợ đéo đâu mà tuyên bố phá sản',
+    'Đang dư dả mà đòi nghỉ học à'
+  ],
+  'Không có phòng như vậy nhé!': [
+    'Không có phòng như vậy nhé!',
+    'Code phòng này không tồn tại đâu',
+    'Tìm không ra phòng với code đó'
+  ],
+  'Room hết slot 3s trước': [
+    'Room hết slot 3s trước',
+    'Phòng đầy người rồi, chịu thôi',
+    'Hết chỗ trong phòng này rồi'
+  ],
+  'Chưa có gì để đem vào giao dịch': [
+    'Chưa có gì để đem vào giao dịch',
+    'Trống trơn thế này thì trade cái gì',
+    'Thêm gì đó vào giao dịch đã chứ'
+  ],
+  'Một nước một vua thì trade với ai?': [
+    'Một nước một vua thì trade với ai?',
+    'Có mỗi mình thì trade với ai bây giờ',
+    'Chờ thêm người vào đã rồi trade'
+  ],
+  'Không có nhiều lượt ra khỏi khu Quân sự miễn phí đến vậy đâu': [
+    'Không có nhiều lượt ra khỏi khu Quân sự miễn phí đến vậy đâu',
+    'Làm gì có nhiều Jail-Free Card thế mà đem trade'
+  ],
+  'Không thể bán một nơi đang thế chấp': [
+    'Không thể bán một nơi đang thế chấp',
+    'Đất đang thế chấp, chưa bán được đâu'
+  ],
+  'Tháo dỡ các tòa nhà trên đất này trước đã': [
+    'Tháo dỡ các tòa nhà trên đất này trước đã',
+    'Còn nhà trên đất kìa, hạ hết đã rồi tính'
+  ]
+};
+
+// Remembers only the single most-recently-shown toast (key + resolved line) —
+// not a history — so the very next *different* toast rerolls fresh, but any
+// immediate repeat of the same key (spam-clicking the same disabled action)
+// keeps saying the same thing instead of cycling through the variety pool.
+let lastToastKey = null;
+let lastToastLine = '';
+
+function pickToastLine(key, vars = {}){
+  if (key === lastToastKey) return lastToastLine;
+  const options = TOAST_MESSAGES[key];
+  const template = (options && options.length) ? options[Math.floor(Math.random() * options.length)] : key;
+  const line = template.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : ''));
+  lastToastKey = key;
+  lastToastLine = line;
+  return line;
+}

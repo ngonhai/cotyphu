@@ -65,9 +65,9 @@ function goToLobby(){
 }
 
 let toastTimer = null;
-function showToast(msg){
+function showToast(msg, vars){
   const el = document.getElementById('toast');
-  el.textContent = msg;
+  el.textContent = pickToastLine(msg, vars);
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
@@ -126,7 +126,7 @@ function renderWaitingRoom(){
   const amHost = MY_UID === state.hostUid;
   players.forEach(([uid, p]) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span class="token-dot" style="background:${p.color}"></span> <span class="player-li-name">${escapeHtml(p.name)}</span> ${uid===state.hostUid ? '<span class="tag">HOST</span>' : ''} ${uid===MY_UID ? '<span class="tag you">YOU</span>' : ''}`;
+    li.innerHTML = `<span class="token-dot" style="background:${p.color}">${p.emoji ? escapeHtml(p.emoji) : ''}</span> <span class="player-li-name">${escapeHtml(p.name)}</span> ${uid===state.hostUid ? '<span class="tag">HOST</span>' : ''} ${uid===MY_UID ? '<span class="tag you">YOU</span>' : ''}`;
     if (amHost && uid !== state.hostUid){
       const kickBtn = document.createElement('button');
       kickBtn.className = 'btn-kick';
@@ -433,6 +433,7 @@ function ensureHopTokenEl(uid){
     el.className = 'player-token hopping';
   }
   el.style.background = state.players[uid].color;
+  el.textContent = state.players[uid].emoji || '';
   return el;
 }
 
@@ -528,6 +529,7 @@ function ensureFlyTokenEl(uid){
   }
   const color = state.players[uid]?.color || '#f2b807';
   el.style.background = color;
+  el.textContent = state.players[uid]?.emoji || '';
   el.style.setProperty('--fly-glow', hexToRgba(color, .55));
   return el;
 }
@@ -601,6 +603,7 @@ function renderTokens(){
       const tok = document.createElement('div');
       tok.className = 'player-token' + (uid===MY_UID ? ' me' : '') + (p.inJail ? ' in-jail' : '');
       tok.style.background = p.color;
+      tok.textContent = p.emoji || '';
       tok.style.transform = `translate(${idx*7}px, ${idx*7}px)`;
       tok.title = p.inJail ? `${p.name} — in jail` : p.name;
       el.appendChild(tok);
@@ -648,6 +651,7 @@ function renderPlayerPanel(){
     const inDebt = !p.bankrupt && p.money < 0;
     card.className = 'player-card' + (state.currentTurn===uid ? ' active-turn' : '') + (p.bankrupt ? ' bankrupt' : '') + (inDebt ? ' in-debt' : '');
     card.querySelector('.token-dot').style.background = p.color;
+    card.querySelector('.token-dot').textContent = p.emoji || '';
     card.querySelector('.player-name').innerHTML =
       `${escapeHtml(p.name)}${uid===MY_UID?' (bản thân)':''}${p.inJail?' 🚔':''}${p.skipNextTurn?' <span class="status-badge skip-badge" title="Bỏ lượt kế tiếp vì vừa hốt Quỹ Nghỉ Ngơi">⏭️❌</span>':''}${p.bankrupt ? ' <span class="status-badge bankrupt-badge">Bankrupt</span>' : ''}`;
 
@@ -738,6 +742,11 @@ const DICE_FACES = {1:'⚀',2:'⚁',3:'⚂',4:'⚃',5:'⚄',6:'⚅'};
 function renderActionBar(){
   const bar = document.getElementById('action-bar');
   bar.innerHTML = '';
+  // Cleared every render, then set only by renderDebtBar() below — see the CSS
+  // landscape block for what this opts out of (the single-row/horizontal-scroll
+  // layout that's right for a flat list of buttons like jail options, but would
+  // wrongly force the debt banner's stacked text+button-row onto one line).
+  bar.classList.remove('action-bar-stacked');
   if (state.status === 'ended') return;
 
   if (isSpectator()){
@@ -804,6 +813,7 @@ function renderActionBar(){
 }
 
 function renderDebtBar(bar, me){
+  bar.classList.add('action-bar-stacked');
   const raiseCashHint = state.settings?.cashRuleMode === 'mortgage'
     ? 'Hãy cố gắng xoay xở'
     : 'Hãy cố gắng xoay xở';
@@ -1211,22 +1221,22 @@ function openTradeBuilder(prefill){
 
       <div class="trade-cash-row">
         <div>
-          <label>You give ($)</label>
+          <label>Tiền mang đi ($)</label>
           <input type="text" inputmode="numeric" id="tb-give-cash" value="${prefill?.give?.cash||0}">
         </div>
         <div>
-          <label>You want ($)</label>
+          <label>Tiền mang về ($)</label>
           <input type="text" inputmode="numeric" id="tb-receive-cash" value="${prefill?.receive?.cash||0}">
         </div>
       </div>
 
       <div class="trade-cash-row">
         <div>
-          <label>Thẻ Jail-Free sẵn có</label>
+          <label>Lượt-ra-ngoài bạn có </label>
           <input type="number" min="0" inputmode="numeric" id="tb-give-jail" value="${prefill?.give?.jailFreeCards||0}">
         </div>
         <div>
-          <label>Thẻ Jail-Free muốn có</label>
+          <label>Lượt-ra-ngoài muốn có </label>
           <input type="number" min="0" inputmode="numeric" id="tb-receive-jail" value="${prefill?.receive?.jailFreeCards||0}">
         </div>
       </div>
@@ -1304,6 +1314,190 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// ---------- Lobby: token color + expression picker ----------
+// There's only one "me" no matter which lobby tab is open, so the Create and Join
+// tabs' pickers share this single selection — clicking a swatch on either tab updates
+// both (see refreshAllTokenCustomizers()), so flipping between tabs never shows a
+// stale or contradictory choice. Persisted to localStorage so it's remembered next
+// visit, the same pattern sounds.js already uses for the sound on/off preference.
+let myTokenColor = localStorage.getItem('monopoly_color');
+if (!TOKEN_COLORS.includes(myTokenColor)) myTokenColor = TOKEN_COLORS[0];
+let myTokenEmoji = localStorage.getItem('monopoly_emoji');
+if (!TOKEN_EMOJIS.includes(myTokenEmoji)) myTokenEmoji = '';
+
+function setMyToken(color, emoji){
+  if (color !== undefined) myTokenColor = color;
+  if (emoji !== undefined) myTokenEmoji = emoji;
+  localStorage.setItem('monopoly_color', myTokenColor);
+  localStorage.setItem('monopoly_emoji', myTokenEmoji);
+  refreshAllTokenCustomizers();
+}
+
+function refreshAllTokenCustomizers(){
+  ['create','join'].forEach(prefix => {
+    const root = document.getElementById(`token-customizer-${prefix}`);
+    if (!root) return;
+    const preview = root.querySelector('.token-preview');
+    if (preview){
+      preview.style.background = myTokenColor;
+      preview.querySelector('.token-preview-emoji').textContent = myTokenEmoji;
+    }
+    root.querySelectorAll('.color-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.color === myTokenColor));
+    root.querySelectorAll('.emoji-swatch').forEach(sw => sw.classList.toggle('active', sw.dataset.emoji === myTokenEmoji));
+  });
+}
+
+function buildTokenCustomizer(prefix){
+  const root = document.getElementById(`token-customizer-${prefix}`);
+  if (!root || root.childElementCount > 0) return;
+
+  const preview = document.createElement('div');
+  preview.className = 'token-preview';
+  preview.innerHTML = '<span class="token-preview-emoji"></span>';
+  root.appendChild(preview);
+
+  const rows = document.createElement('div');
+  rows.className = 'token-picker-rows';
+  root.appendChild(rows);
+
+  const colorLabel = document.createElement('div');
+  colorLabel.className = 'swatch-group-label';
+  colorLabel.textContent = 'Màu';
+  rows.appendChild(colorLabel);
+
+  const colorRow = document.createElement('div');
+  colorRow.className = 'color-swatch-row';
+  TOKEN_COLORS.forEach(c => {
+    const sw = document.createElement('button');
+    sw.type = 'button';
+    sw.className = 'color-swatch';
+    sw.style.background = c;
+    sw.dataset.color = c;
+    sw.title = c;
+    sw.addEventListener('click', () => setMyToken(c));
+    colorRow.appendChild(sw);
+  });
+  rows.appendChild(colorRow);
+
+  const emojiLabel = document.createElement('div');
+  emojiLabel.className = 'swatch-group-label';
+  emojiLabel.textContent = 'Biểu cảm (không ảnh hưởng gì, chỉ cho vui)';
+  rows.appendChild(emojiLabel);
+
+  const emojiRow = document.createElement('div');
+  emojiRow.className = 'emoji-swatch-row';
+  TOKEN_EMOJIS.forEach(e => {
+    const sw = document.createElement('button');
+    sw.type = 'button';
+    sw.className = 'emoji-swatch' + (e === '' ? ' emoji-swatch-none' : '');
+    if (e !== '') sw.textContent = e;
+    sw.dataset.emoji = e;
+    sw.title = e === '' ? 'Không có biểu cảm' : e;
+    sw.addEventListener('click', () => setMyToken(undefined, e));
+    emojiRow.appendChild(sw);
+  });
+  rows.appendChild(emojiRow);
+
+  refreshAllTokenCustomizers();
+}
+
+// Purely a visual hint on the Join tab: greys out (see .color-swatch.taken in CSS)
+// whichever colors are already claimed by players already seated in that room code,
+// so picking one doesn't come as a surprise when joinRoom() silently reassigns it.
+// Debounced on input and only looked up once a full 5-character code is typed, to
+// avoid firing a database read on every keystroke.
+let colorTakenLookupTimer = null;
+function scheduleColorTakenLookup(){
+  clearTimeout(colorTakenLookupTimer);
+  const codeInput = document.getElementById('input-room-code');
+  const joinRoot = document.getElementById('token-customizer-join');
+  if (!codeInput || !joinRoot) return;
+  const code = codeInput.value.trim().toUpperCase();
+  if (code.length !== 5){
+    joinRoot.querySelectorAll('.color-swatch.taken').forEach(sw => sw.classList.remove('taken'));
+    return;
+  }
+  colorTakenLookupTimer = setTimeout(async () => {
+    try {
+      const snap = await db.ref('rooms/' + code + '/players').get();
+      const players = snap.exists() ? snap.val() : {};
+      const taken = new Set(Object.values(players).map(p => p.color));
+      joinRoot.querySelectorAll('.color-swatch').forEach(sw => sw.classList.toggle('taken', taken.has(sw.dataset.color)));
+    } catch (e){
+      // Room might not exist, or a network hiccup — this is only a cosmetic hint,
+      // so just leave the swatches as they were rather than showing an error.
+    }
+  }, 400);
+}
+
+// ---------- Chat UI ----------
+// game.js's subscribeChat() calls these two hooks by name (onChatReset when a new
+// room's chat listener attaches, onChatMessage for every message — the existing
+// ones on (re)join, then each new one live) rather than ui.js reaching into
+// game.js's internals, keeping the sync/storage side and the rendering side
+// separate the same way state/renderAll() already are elsewhere in this file.
+let chatPanelOpen = false;
+let chatUnreadCount = 0;
+
+function onChatReset(){
+  const list = document.getElementById('chat-messages');
+  if (list) list.innerHTML = '<div class="chat-empty-msg">Chưa có tin nhắn nào — nói gì đó đi!</div>';
+  chatUnreadCount = 0;
+  updateChatUnreadBadge();
+}
+
+function onChatMessage(msg){
+  const list = document.getElementById('chat-messages');
+  if (!list) return;
+  const empty = list.querySelector('.chat-empty-msg');
+  if (empty) empty.remove();
+
+  // Best-effort identification of who sent it — looked up live against current
+  // room state rather than trusting anything beyond name/text from the message
+  // itself, so a stale/forged uid can't spoof someone else's color or role.
+  const asPlayer = state?.players?.[msg.uid];
+  const asSpectator = state?.spectators?.[msg.uid];
+  const color = asPlayer?.color || '#7A7F87';
+  const isKnownSpectator = !asPlayer && !!asSpectator;
+
+  const row = document.createElement('div');
+  row.className = 'chat-msg' + (msg.uid === MY_UID ? ' me' : '');
+  row.innerHTML = `
+    <span class="token-dot" style="background:${color}">${asPlayer?.emoji ? escapeHtml(asPlayer.emoji) : ''}</span>
+    <span class="chat-msg-body">
+      <span class="chat-msg-name${isKnownSpectator ? ' spectator' : ''}">${escapeHtml(msg.name || '???')}</span>
+      <span class="chat-msg-text">${escapeHtml(msg.text || '')}</span>
+    </span>`;
+  list.appendChild(row);
+  list.scrollTop = list.scrollHeight;
+
+  if (!chatPanelOpen && msg.uid !== MY_UID){
+    chatUnreadCount++;
+    updateChatUnreadBadge();
+  }
+}
+
+function updateChatUnreadBadge(){
+  const badge = document.getElementById('chat-unread-badge');
+  if (!badge) return;
+  if (chatUnreadCount > 0){
+    badge.textContent = chatUnreadCount > 9 ? '9+' : String(chatUnreadCount);
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function setChatPanelOpen(open){
+  chatPanelOpen = open;
+  document.getElementById('chat-panel')?.classList.toggle('hidden', !open);
+  if (open){
+    chatUnreadCount = 0;
+    updateChatUnreadBadge();
+    document.getElementById('chat-input')?.focus();
+  }
+}
+
 // ---------- Event wiring ----------
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -1336,13 +1530,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   catch (e) { console.error('tryRejoin failed:', e); }
   if (!rejoined) showScreen('lobby');
 
+  buildTokenCustomizer('create');
+  buildTokenCustomizer('join');
+  document.getElementById('input-room-code')?.addEventListener('input', scheduleColorTakenLookup);
+
   document.getElementById('btn-create-room').addEventListener('click', () => {
     const name = document.getElementById('input-name-create').value.trim();
     const maxPlayers = parseInt(document.getElementById('select-max-players').value);
     const rawStartingCash = parseInt(document.getElementById('input-starting-cash').value);
     const startingCash = (Number.isFinite(rawStartingCash) && rawStartingCash >= 0) ? rawStartingCash : 1500;
     if (!name){ showToast('Tên thì đéo nhập'); return; }
-    createRoom(name, maxPlayers, startingCash);
+    createRoom(name, maxPlayers, startingCash, myTokenColor, myTokenEmoji);
   });
 
   const startingCashInput = document.getElementById('input-starting-cash');
@@ -1363,7 +1561,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const name = document.getElementById('input-name-join').value.trim();
     const code = document.getElementById('input-room-code').value.trim();
     if (!name || !code){ showToast('Tên đâu?? Code đâu??'); return; }
-    joinRoom(code, name);
+    joinRoom(code, name, myTokenColor, myTokenEmoji);
   });
 
   document.getElementById('btn-start-game').addEventListener('click', startGame);
@@ -1377,6 +1575,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   document.getElementById('btn-leave-game').addEventListener('click', () => {
     if (confirm("Bạn muốn rời game!?!")) leaveGame();
+  });
+  document.getElementById('chat-toggle-btn').addEventListener('click', () => setChatPanelOpen(!chatPanelOpen));
+  document.getElementById('chat-close-btn').addEventListener('click', () => setChatPanelOpen(false));
+  document.getElementById('chat-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    sendChatMessage(text);
   });
   document.getElementById('modal').addEventListener('click', (e) => {
     if (e.target.id === 'modal') e.target.classList.remove('show');

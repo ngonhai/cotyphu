@@ -162,6 +162,69 @@ select option{ background: var(--bg-2); color: var(--ink); }
   box-shadow: 0 4px 12px rgba(242,184,7,.35), inset 0 1px 0 rgba(255,255,255,.5);
 }
 
+/* ---------- Lobby: token color + expression picker ---------- */
+/* Shared by both the Create Room and Join Room tabs (see buildTokenCustomizer() in
+   ui.js, which builds this same markup into both #token-customizer-create and
+   #token-customizer-join and keeps their selection in sync via setMyToken()) — one
+   compact card with a live preview on one side and the two swatch rows (color, then
+   expression) on the other, so picking either updates the preview immediately
+   without needing a separate confirmation step. */
+.token-customizer{
+  display:flex; align-items:center; gap:14px; margin-bottom: 4px;
+  padding: 12px; border-radius:14px; background: rgba(255,255,255,.03); border:1px solid var(--glass-border);
+}
+.token-preview{
+  flex-shrink:0; width:46px; height:46px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; font-size:1.3rem; line-height:1;
+  border:2px solid rgba(255,255,255,.5);
+  box-shadow: 0 2px 6px rgba(0,0,0,.5), inset 0 1px 2px rgba(255,255,255,.4), inset 0 -3px 5px rgba(0,0,0,.25);
+  transition: background .15s ease;
+}
+.token-picker-rows{ flex:1; min-width:0; display:flex; flex-direction:column; gap:9px; }
+.swatch-group-label{
+  font-size:.64rem; color: var(--ink-dim); font-weight:700; margin-bottom:5px;
+  text-transform:uppercase; letter-spacing:.05em;
+}
+.color-swatch-row, .emoji-swatch-row{ display:flex; gap:6px; flex-wrap:wrap; }
+.color-swatch{
+  position:relative;
+  width:23px; height:23px; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0; appearance:none;
+  box-shadow: inset 0 1px 2px rgba(255,255,255,.5), inset 0 -2px 3px rgba(0,0,0,.25);
+  transition: transform .12s ease, border-color .12s ease;
+}
+.color-swatch:hover{ transform: scale(1.14); }
+.color-swatch.active{
+  border-color:#fff;
+  box-shadow: 0 0 0 2px rgba(242,184,7,.75), inset 0 1px 2px rgba(255,255,255,.5), inset 0 -2px 3px rgba(0,0,0,.25);
+}
+/* A color already claimed by another player already seated in the room being joined
+   (see joinRoom's usedColors check in game.js) — still pickable (clicking it is
+   harmless, joinRoom silently reassigns an open one and toasts about it), just
+   visibly flagged so the swap isn't a surprise. Only ever applied to the Join tab's
+   swatches (see scheduleColorTakenLookup() in ui.js), once a full room code is typed. */
+.color-swatch.taken::after{
+  content:''; position:absolute; inset:0; border-radius:50%;
+  background: repeating-linear-gradient(45deg, rgba(10,14,26,.0) 0 3px, rgba(10,14,26,.55) 3px 5px);
+}
+.emoji-swatch{
+  width:29px; height:29px; border-radius:9px; border:1px solid var(--glass-border); appearance:none;
+  background: rgba(255,255,255,.05); cursor:pointer; font-size:1rem; padding:0;
+  display:flex; align-items:center; justify-content:center; color: var(--ink-dim);
+  transition: all .12s ease;
+}
+.emoji-swatch:hover{ border-color: var(--glass-border-strong); background: rgba(255,255,255,.09); }
+.emoji-swatch.active{
+  border-color: transparent; background: linear-gradient(135deg, var(--brass-bright), var(--brass));
+  box-shadow: 0 3px 8px rgba(242,184,7,.35);
+}
+/* The "no expression" option — an empty string in TOKEN_EMOJIS — needs its own glyph
+   so its button isn't just a blank square in the row. */
+.emoji-swatch.emoji-swatch-none::before{ content:'✕'; font-size:.85rem; }
+@media (max-width: 420px){
+  .token-customizer{ flex-direction:column; align-items:stretch; }
+  .token-preview{ align-self:center; }
+}
+
 .btn{
   appearance:none; border:none; cursor:pointer; font-weight:800; font-size:1rem;
   padding: 14px 20px; border-radius: 14px; color:#1a1406;
@@ -642,6 +705,10 @@ select option{ background: var(--bg-2); color: var(--ink); }
   border: 1px solid rgba(0,0,0,.35);
   box-shadow: 0 2px 4px rgba(0,0,0,.55), inset 0 1px 2px rgba(255,255,255,.6), inset 0 -2px 3px rgba(0,0,0,.25);
   z-index:5;
+  /* Centers the optional expression emoji (see renderTokens()/etc. in ui.js setting
+     .textContent) inside the dot — with no emoji this is just an empty flex box and
+     changes nothing visually from the plain colored circle it always was. */
+  display:flex; align-items:center; justify-content:center; font-size:9px; line-height:1;
 }
 .player-token.me{ box-shadow: 0 0 0 2px white, 0 2px 4px rgba(0,0,0,.55), inset 0 1px 2px rgba(255,255,255,.6); }
 .player-token.hopping{ z-index:10; }
@@ -704,6 +771,7 @@ select option{ background: var(--bg-2); color: var(--ink); }
 .token-dot{
   width:17px; height:17px; border-radius:50%; flex-shrink:0; border: 1px solid rgba(0,0,0,.3);
   box-shadow: inset 0 1px 2px rgba(255,255,255,.6), inset 0 -2px 3px rgba(0,0,0,.25), 0 2px 4px rgba(0,0,0,.35);
+  display:flex; align-items:center; justify-content:center; font-size:10px; line-height:1;
 }
 .player-info{ flex:1; }
 .player-name{ font-weight:700; font-size:.9rem; color: var(--ink); display:flex; align-items:center; gap:6px; }
@@ -844,6 +912,72 @@ select option{ background: var(--bg-2); color: var(--ink); }
 .swatch.group-orange{ background:#f2a13d; } .swatch.group-red{ background:#ec5b50; } .swatch.group-yellow{ background:#f7d24f; }
 .swatch.group-green{ background:#4bb355; } .swatch.group-darkblue{ background:#3059b8; }
 
+/* ---------- Floating chat ---------- */
+/* Both seated players and spectators can use this — see chat-related code in
+   game.js (chatRef()/sendChatMessage()) and ui.js (renderChatMessage() etc).
+   Deliberately NOT part of .game-body's flex layout: it's a fixed-position
+   overlay so opening/closing it never resizes or reflows the board underneath,
+   and fitBoardToViewport() (ui.js) never needs to know it exists. */
+.chat-toggle-btn{
+  position: fixed; left: 18px; bottom: 18px; z-index: 40;
+  width: 50px; height: 50px; border-radius: 50%; border: 1px solid var(--glass-border-strong);
+  background: rgba(15,19,32,.85); backdrop-filter: blur(14px); color: var(--ink);
+  font-size: 1.35rem; cursor: pointer; display:flex; align-items:center; justify-content:center;
+  box-shadow: var(--shadow); transition: transform .15s ease;
+}
+.chat-toggle-btn:hover{ transform: scale(1.08); }
+.chat-unread-badge{
+  position:absolute; top:-3px; right:-3px; min-width:18px; height:18px; padding:0 4px; border-radius:999px;
+  background: linear-gradient(135deg, var(--brass-bright), var(--brass)); color:#1a1406; font-size:.68rem; font-weight:800;
+  display:flex; align-items:center; justify-content:center; border:2px solid rgba(15,19,32,.9);
+}
+.chat-panel{
+  position: fixed; left: 18px; bottom: 18px; z-index: 40;
+  width: 320px; height: min(58vh, 460px);
+  background: rgba(15,19,32,.92); backdrop-filter: blur(18px); border:1px solid var(--glass-border-strong);
+  border-radius: 16px; box-shadow: var(--shadow);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.chat-panel.hidden{ display:none; }
+.chat-panel-header{
+  flex-shrink:0; display:flex; align-items:center; justify-content:space-between;
+  padding: 11px 14px; border-bottom:1px solid var(--glass-border); font-weight:800; font-size:.9rem;
+}
+.chat-close-btn{
+  background:none; border:none; color: var(--ink-dim); font-size:1rem; cursor:pointer; line-height:1; padding:4px;
+}
+.chat-close-btn:hover{ color: var(--ink); }
+.chat-messages{ flex:1; min-height:0; overflow-y:auto; padding: 10px 12px; display:flex; flex-direction:column; gap:8px; }
+.chat-msg{ display:flex; gap:7px; align-items:flex-start; font-size:.83rem; line-height:1.35; }
+.chat-msg .token-dot{ margin-top:2px; flex-shrink:0; }
+.chat-msg-body{ flex:1; min-width:0; }
+.chat-msg-name{ font-weight:800; color: var(--brass-bright); }
+.chat-msg-name.spectator{ color: var(--ink-dim); }
+.chat-msg-text{ color: var(--ink-soft); overflow-wrap:anywhere; display:block; }
+.chat-msg.me .chat-msg-name{ color: var(--ink); }
+.chat-empty-msg{ color: var(--ink-dim); font-size:.8rem; text-align:center; margin-top:16px; }
+.chat-form{ flex-shrink:0; display:flex; gap:7px; padding: 10px 12px; border-top:1px solid var(--glass-border); }
+.chat-form input{
+  flex:1; min-width:0; padding: 9px 11px; border-radius:9px; border:1px solid var(--glass-border);
+  background: rgba(255,255,255,.05); color: var(--ink); font-size:.85rem;
+}
+.chat-form input:focus{ outline:none; border-color: var(--glass-border-strong); }
+.chat-send-btn{
+  flex-shrink:0; padding: 9px 14px; border-radius:9px; border:none; cursor:pointer; font-weight:800; font-size:.82rem;
+  color:#1a1406; background: linear-gradient(135deg, var(--brass-bright), var(--brass));
+}
+/* Not enough screen to show both the board and a floating card at once — the panel
+   becomes a near-fullscreen sheet instead, and the toggle button tucks in a bit
+   further from the edge so it doesn't sit under a mobile browser's own UI chrome. */
+@media (max-width: 640px), (max-height: 520px){
+  .chat-toggle-btn{ left:12px; bottom:12px; width:46px; height:46px; font-size:1.2rem; }
+  .chat-panel{
+    left: 10px; right: 10px; bottom: 10px; top: 10px;
+    width: auto; height: auto;
+  }
+}
+
+
 #toast{
   position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px);
   background: rgba(15,19,32,.85); backdrop-filter: blur(16px); color:var(--ink); padding:13px 22px; border-radius:12px;
@@ -916,7 +1050,24 @@ select option{ background: var(--bg-2); color: var(--ink); }
      real height to scroll within, instead of being squeezed to near-zero. */
   #player-panel{ max-height: 30%; overflow-y:auto; padding: 8px; }
   .player-card{ padding: 6px 9px; margin-bottom:5px; }
+  /* The actual fix for the jail-screen bug: #action-bar can hold up to 3 buttons at
+     once (pay fine / use jail card / roll for doubles) plus more elsewhere (trade
+     responses, buy/auction, etc). Its base rule just wraps them onto more rows when
+     they don't fit — fine when there's vertical room to spare, but on a short
+     landscape viewport a wrapped 2nd/3rd row can end up clipped by .side-panel's
+     overflow:hidden with no way to reach it (no scrollbar exists for a *wrapped*
+     row). Forcing a single non-wrapping row with its own horizontal scroll turns
+     "silently unreachable" into "swipe sideways to see the rest" instead — every
+     button is still there, just laid out the way you'd expect a toolbar to behave
+     when it runs out of width. flex-shrink:0 on the buttons is what makes them keep
+     their real width and overflow into scroll rather than getting squished thinner
+     to force a fit. */
   #action-bar{ padding: 8px; }
+  #action-bar:not(.action-bar-stacked){
+    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-x;
+  }
+  #action-bar:not(.action-bar-stacked) .btn{ flex: 0 0 auto; min-width: 0; padding: 10px 14px; font-size: .85rem; white-space: nowrap; }
   #log-panel{ padding: 8px; font-size:.76rem; }
 }
 

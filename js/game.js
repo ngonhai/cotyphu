@@ -39,8 +39,11 @@ let prevHousesByTileForSound = {};
 let prevMortgagedByTileForSound = {};
 let prevCardMoneyNonce = null;
 let prevDeclineBuyNonce = null;
+let prevBigRewardNonce = null;
 let prevPositionByUidForSound = {};
 let prevFullGroupOwnerForSound = {};
+let prevCurrentTurnForSound = undefined;
+let prevBankruptForSound = {};
 // True once detectSoundEvents() has run at least once for the current room
 // connection. The very first tick after joining/reconnecting has no real
 // "before" state to compare against — without this, a mid-game reconnect
@@ -70,6 +73,7 @@ function subscribeRoom(){
   prevMortgagedByTileForSound = {};
   prevCardMoneyNonce = null;
   prevDeclineBuyNonce = null;
+  prevBigRewardNonce = null;
   prevPositionByUidForSound = {};
   prevFullGroupOwnerForSound = {};
   soundBaselinePrimed = false;
@@ -97,6 +101,7 @@ function subscribeRoom(){
     renderAll();
     try { detectSoundEvents(); } catch (e) { console.error('detectSoundEvents failed:', e);}
   });
+  subscribeChat();
 }
 
 
@@ -111,6 +116,17 @@ function detectSoundEvents(){
   }
   prevStatusForSound = state.status;
 
+  // `currentTurn` changing to a different player is "a turn ended" regardless of
+  // what caused it (End Turn button, a skipped turn, the previous player going
+  // bankrupt and being removed, etc.) — firstTick and "still nobody assigned yet"
+  // are both guarded out so this doesn't fire on reconnect or right as the game
+  // starts (gameStart already covers that moment).
+  if (!firstTick && state.status === 'playing' && prevCurrentTurnForSound !== undefined
+      && state.currentTurn && state.currentTurn !== prevCurrentTurnForSound){
+    playSound('endTurn');
+  }
+  prevCurrentTurnForSound = state.currentTurn;
+
   if (state.players){
     for (const uid in state.players){
       const isJailedNow = !!state.players[uid].inJail;
@@ -118,6 +134,11 @@ function detectSoundEvents(){
       if (wasJailedBefore === false && isJailedNow === true) playSound('jailIn');
       if (wasJailedBefore === true && isJailedNow === false) playSound('jailOut');
       prevJailForSound[uid] = isJailedNow;
+
+      const isBankruptNow = !!state.players[uid].bankrupt;
+      const wasBankruptBefore = prevBankruptForSound[uid];
+      if (!firstTick && wasBankruptBefore === false && isBankruptNow === true) playSound('bankrupt');
+      prevBankruptForSound[uid] = isBankruptNow;
 
       // Landing exactly on Go or Free Parking. Guarded on `!firstTick` so
       // reconnecting while already sitting on one of these tiles doesn't fire
@@ -158,6 +179,18 @@ function detectSoundEvents(){
       playSound('declineBuy');
     }
     prevDeclineBuyNonce = state.declineBuyEvent.nonce;
+  }
+
+  // "Phần thưởng cực lớn" (choose_tile / đi-đến-bất-cứ-đâu) card being drawn writes
+  // this one-shot marker (see drawCard()'s 'choose_tile' case) — same nonce pattern
+  // as cardMoneyEvent/declineBuyEvent above, so every client plays the reveal sound
+  // in sync the moment the card is drawn, separate from the `teleport` sound that
+  // plays later once the player actually picks a tile and flies there.
+  if (state.bigRewardEvent && state.bigRewardEvent.nonce){
+    if (prevBigRewardNonce !== null && state.bigRewardEvent.nonce !== prevBigRewardNonce){
+      playSound('bigReward');
+    }
+    prevBigRewardNonce = state.bigRewardEvent.nonce;
   }
 
   if (state.properties){
@@ -224,7 +257,48 @@ function detectSoundEvents(){
 // actually stick.
 function unsubscribeRoom(){
   if (activeRoomListenerRef){ activeRoomListenerRef.off('value'); activeRoomListenerRef = null; }
+  unsubscribeChat();
   teardownPresence();
+}
+
+// ---------- Chat ----------
+// Lives at a separate top-level `roomChats/{ROOM_ID}` path — deliberately NOT
+// nested under rooms/{ROOM_ID} — and is subscribed independently of the main room
+// listener above. subscribeRoom() attaches a single .on('value') at the room's
+// root, which re-downloads the *entire* room state (board, players, log, everything)
+// on every single change; if chat lived inside that same tree, every chat message
+// would trigger a full room re-sync to every connected client for no reason. A
+// separate child_added listener here only ever pulls the one new message itself.
+// Deleted alongside the room in isRoomExpired()'s two cleanup call sites (joinRoom,
+// tryRejoin) so it doesn't outlive the room it belongs to.
+function chatRef(path){ return db.ref('roomChats/' + ROOM_ID + (path ? '/' + path : '')); }
+
+let activeChatListenerRef = null;
+let chatMessages = []; // local cache of what's arrived so far this session, oldest first
+
+function subscribeChat(){
+  unsubscribeChat();
+  chatMessages = [];
+  if (typeof onChatReset === 'function') onChatReset();
+  // Only the most recent 100 messages — this is a live room chat, not an archive,
+  // and capping it keeps both the initial child_added burst and this room's
+  // eventual roomChats/ deletion cheap regardless of how chatty a long game gets.
+  activeChatListenerRef = chatRef('messages').limitToLast(100);
+  activeChatListenerRef.on('child_added', snap => {
+    const msg = { id: snap.key, ...snap.val() };
+    chatMessages.push(msg);
+    if (typeof onChatMessage === 'function') onChatMessage(msg);
+  });
+}
+
+function unsubscribeChat(){
+  if (activeChatListenerRef){ activeChatListenerRef.off('child_added'); activeChatListenerRef = null; }
+}
+
+async function sendChatMessage(text){
+  const trimmed = (text || '').trim().slice(0, 240);
+  if (!trimmed || !ROOM_ID || !MY_UID) return;
+  await chatRef('messages').push({ uid: MY_UID, name: myName, text: trimmed, ts: Date.now() });
 }
 
 function log(msg){
@@ -333,17 +407,21 @@ function isRoomExpired(room){
    return false;
  }
 
-async function createRoom(name, maxPlayers, startingMoney){
+async function createRoom(name, maxPlayers, startingMoney, chosenColor, chosenEmoji){
   ROOM_ID = roomCode();
   myName = name;
-  const color = TOKEN_COLORS[0];
+  // First player in a brand-new room — no one else's color to collide with, so
+  // whatever was picked at the lobby screen is used as-is (falls back to the
+  // palette's first color if something went wrong building/reading the picker).
+  const color = TOKEN_COLORS.includes(chosenColor) ? chosenColor : TOKEN_COLORS[0];
+  const emoji = TOKEN_EMOJIS.includes(chosenEmoji) ? chosenEmoji : '';
   const startMoney = (Number.isFinite(startingMoney) && startingMoney >= 0) ? startingMoney : 1500;
   const room = {
     hostUid: MY_UID,
     status: 'lobby',
     settings: { startingMoney: startMoney, freeParkingJackpot: true, maxPlayers, requireFullSetToBuild: true, tradingEnabled: true, cashRuleMode: 'sell', collectRentIfOwnerInJail: false, jailFineAmount: 150, goBonusEnabled: false, goBonusAmount: 100, auctionEnabled: false, auctionRailwaysEnabled: false, jailVisitBonusEnabled: true, chanceTeleportEnabled: false },
     players: {
-      [MY_UID]: { name, color, money: startMoney, position: 0, inJail:false, jailTurns:0, bankrupt:false, jailFreeCards:0, debtTo: null, skipNextTurn:false }
+      [MY_UID]: { name, color, emoji, money: startMoney, position: 0, inJail:false, jailTurns:0, bankrupt:false, jailFreeCards:0, debtTo: null, skipNextTurn:false }
     },
     turnOrder: [MY_UID],
     currentTurn: MY_UID,
@@ -368,7 +446,7 @@ async function createRoom(name, maxPlayers, startingMoney){
   showScreen('waiting');
 }
 
-async function joinRoom(code, name){
+async function joinRoom(code, name, chosenColor, chosenEmoji){
   ROOM_ID = code.toUpperCase();
   const snap = await roomRef().get();
   if (!snap.exists()){ showToast("Không có phòng như vậy nhé!"); ROOM_ID = null; return false; }
@@ -376,6 +454,7 @@ async function joinRoom(code, name){
 
   if (isRoomExpired(room)){
      await roomRef().remove();
+     await chatRef().remove();
      showToast("Phòng đã hết hạn. LH:0123456789 để báo cáo");
      ROOM_ID = null;
      return false;
@@ -418,9 +497,18 @@ async function joinRoom(code, name){
   }
   myName = name;
   const usedColors = existing.map(k => room.players[k].color);
-  const color = TOKEN_COLORS.find(c => !usedColors.includes(c)) || TOKEN_COLORS[existing.length % TOKEN_COLORS.length];
+  let color;
+  if (chosenColor && TOKEN_COLORS.includes(chosenColor) && !usedColors.includes(chosenColor)){
+    color = chosenColor;
+  } else {
+    if (chosenColor && usedColors.includes(chosenColor)){
+      showToast('Màu bạn chọn đã có người dùng rồi — tự đổi màu khác cho bạn nhé');
+    }
+    color = TOKEN_COLORS.find(c => !usedColors.includes(c)) || TOKEN_COLORS[existing.length % TOKEN_COLORS.length];
+  }
+  const emoji = TOKEN_EMOJIS.includes(chosenEmoji) ? chosenEmoji : '';
   await roomRef('players/' + MY_UID).set({
-    name, color, money: room.settings?.startingMoney ?? 1500, position:0,
+    name, color, emoji, money: room.settings?.startingMoney ?? 1500, position:0,
     inJail:false, jailTurns:0, bankrupt:false, jailFreeCards:0, debtTo: null, skipNextTurn:false
   });
   location.hash = ROOM_ID;
@@ -439,6 +527,7 @@ async function tryRejoin(){
 
   if (isRoomExpired(room)){
      await db.ref('rooms/' + hash).remove();
+     await db.ref('roomChats/' + hash).remove();
      location.hash = '';
      return false;
    }
@@ -649,13 +738,13 @@ async function resolveTile(uid, tileIndex){
       if (justUnlocked){
         await roomRef(`properties/${tileIndex}/landedSincePurchase`).set(true);
       }
-      log(`${player.name} đến đất của mình, ${tile.name}.${justUnlocked ? ' (có thể up các tòa nhà rồi.)' : ''}`);
+      log(`${player.name} đến đất của mình, ${tile.name}.${justUnlocked ? '' : ''}`);
       await finishAction(uid);
     } else if (pdata.mortgaged){
-      log(`${player.name} đến ô ${tile.name}, nhưng là tài sản thế chấp — nên không mất phí`);
+      log(`${player.name} đến ${tile.name}, nhưng là tài sản thế chấp — nên không mất phí`);
       await finishAction(uid);
     } else if (room.players[pdata.owner]?.inJail && room.settings?.collectRentIfOwnerInJail === false){
-      log(`${player.name} đến ô ${tile.name}, nhưng ${room.players[pdata.owner].name} đang tạm đi vắng — không mất phí gì`);
+      log(`${player.name} đến ${tile.name}, nhưng ${room.players[pdata.owner].name} đang tạm đi vắng — không mất phí gì`);
       await finishAction(uid);
     } else {
       const rent = computeRent(room, tileIndex);
@@ -925,7 +1014,7 @@ async function drawCard(uid, deckType){
   const deck = room.settings?.chanceTeleportEnabled ? rawDeck : rawDeck.filter(c => c.action !== 'choose_tile');
   const card = pickWeightedCard(deck);
   const player = room.players[uid];
-  log(`${player.name} chọn ${deckType==='chance'?'Cơ Hội':'Túi Mù'} nội dụng: "${card.text}"`);
+  log(`${player.name} mở được ${deckType==='chance'?'Cơ Hội':'Túi Mù'} có nội dụng: "${card.text}"`);
   if (uid === MY_UID && typeof showToast === 'function') showToast(card.text);
 
   switch(card.action){
@@ -1047,6 +1136,7 @@ async function drawCard(uid, deckType){
       // the UI and lights up the board for every connected client meanwhile.
       await roomRef('pendingTileChoice').set({ uid, collectGo: !!card.collectGo });
       await roomRef('turnPhase').set('action');
+      await roomRef('bigRewardEvent').set({ nonce: Date.now() });
       return;
     }
   }

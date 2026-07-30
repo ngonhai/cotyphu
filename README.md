@@ -20,11 +20,18 @@ No servers to pay for, no domain needed.
            ".read": true,
            ".write": true
          }
+       },
+       "roomChats": {
+         "$roomId": {
+           ".read": true,
+           ".write": true
+         }
        }
      }
    }
    ```
-   This is intentionally open (anyone with a room code can read/write that room) — fine for a private game with friends who you send the link to. Nobody can guess a 5-character room code, but if you want it locked down further later, Firebase Auth can be added.
+   This is intentionally open (anyone with a room code can read/write that room, and its chat) — fine for a private game with friends who you send the link to. Nobody can guess a 5-character room code, but if you want it locked down further later, Firebase Auth can be added.
+   `roomChats` is a separate top-level path from `rooms` on purpose (see the comment above `chatRef()` in `js/game.js`) — chat is subscribed independently so a flood of chat messages never re-syncs the whole board/players/log to everyone the way nesting it under `rooms` would. If you already set up Rules before this feature existed, you'll need to re-publish with the `roomChats` block added, or chat will fail silently with a permission error (check the browser console).
 
 ## 2. Host it for free on GitHub Pages
 

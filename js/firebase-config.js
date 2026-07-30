@@ -5,8 +5,8 @@
 //    (we tighten the rules below in step 4).
 // 3. Click the gear icon > Project settings > scroll to "Your apps" > click the web icon (</>)
 //    to register a web app. Copy the config object it gives you and paste the values below.
-// 4. In Realtime Database > Rules, paste this (lets any client read/write only inside /rooms,
-//    which is fine for a small private game with friends):
+// 4. In Realtime Database > Rules, paste this (lets any client read/write only inside /rooms
+//    and /roomChats, which is fine for a small private game with friends):
 //
 //   {
 //     "rules": {
@@ -15,10 +15,19 @@
 //           ".read": true,
 //           ".write": true
 //         }
+//       },
+//       "roomChats": {
+//         "$roomId": {
+//           ".read": true,
+//           ".write": true
+//         }
 //       }
 //     }
 //   }
 //
+//   (roomChats is a separate path from rooms on purpose — see chatRef() in game.js.
+//   If you set up Rules before the chat feature existed, re-publish with this block
+//   added or chat will silently fail with a permission error.)
 // 5. Fill in the values below with YOUR project's config (safe to be public in client code -
 //    these are not secret keys, access is controlled by the Database Rules above).
 
