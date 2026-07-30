@@ -408,6 +408,11 @@ select option{ background: var(--bg-2); color: var(--ink); }
      share of a zoomed-in, and therefore visually smaller, viewport. */
   container-type: inline-size;
   container-name: gameboard;
+  /* Needed so #fly-token (a direct child, positioned absolutely) measures its
+     left/top against this grid's own box — matching the same offsetLeft/offsetTop
+     space the tiles are laid out in — rather than against some further-out
+     ancestor. Doesn't otherwise change how the grid itself renders. */
+  position: relative;
 }
 
 .tile{
@@ -647,6 +652,27 @@ select option{ background: var(--bg-2); color: var(--ink); }
   100% { transform: translateY(0) scale(1); }
 }
 
+/* Straight-line "as the crow flies" token used for Chance/Chest teleport cards
+   (Advance to X, nearest railroad/utility, pick-any-tile) — a single continuous
+   flight between two tiles instead of hopping tile-by-tile like a normal roll.
+   Positioned with top/left (not the bottom/right corner-in-a-tile scheme
+   .player-token normally uses) since this token is a direct child of #board-grid,
+   free-floating over the whole board rather than nested inside one .tile — its
+   left/top are set from JS in the *same* offsetLeft/offsetTop space the tiles
+   themselves lay out in (see #board-grid's `position: relative` above), then
+   transitioned to animate the flight.  */
+.player-token.flying{
+  position: absolute;
+  top: 0; left: 0; bottom: auto; right: auto;
+  z-index: 15;
+  animation: token-flying-pulse 0.5s ease-in-out infinite alternate;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.8), 0 4px 14px rgba(0,0,0,.5), 0 0 18px 4px var(--fly-glow, rgba(242,184,7,.55));
+}
+@keyframes token-flying-pulse{
+  0%   { transform: scale(1) translateY(0); }
+  100% { transform: scale(1.18) translateY(-3px); }
+}
+
 /* A player actually IN jail (vs. just visiting the same corner) gets a red ring and a
    set of barred-cage stripes drawn over their token, so the two are never confused at
    a glance — the ring reads as "flagged" even before you're close enough to see bars. */
@@ -826,8 +852,13 @@ select option{ background: var(--bg-2); color: var(--ink); }
 }
 #toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
-/* ---------- Mobile ---------- */
-@media (max-width: 860px){
+/* ---------- Mobile: portrait ---------- */
+/* Scoped to orientation:portrait specifically (not just max-width) — a phone in
+   landscape can easily still be under 860px wide (many common phones land around
+   780-830px landscape), and stacking the board above a squashed side-panel is
+   exactly wrong there: see the landscape block below instead, which keeps the
+   side-by-side layout these narrow-width-but-wide-viewport phones actually need. */
+@media (max-width: 860px) and (orientation: portrait){
   .game-header{ padding: 9px 12px; gap:8px; }
   .game-header h2{ font-size:1rem; flex-basis: 100%; }
   .header-actions{ gap:6px; }
@@ -852,6 +883,41 @@ select option{ background: var(--bg-2); color: var(--ink); }
   .side-panel{ width:100%; border-left:none; border-top:1px solid var(--glass-border-strong); max-height: 44dvh; }
   #player-panel{ max-height: 120px; display:flex; gap:8px; overflow-x:auto; }
   .player-card{ flex-shrink:0; min-width: 150px; margin-bottom:0; }
+}
+
+/* ---------- Mobile: landscape ---------- */
+/* Targeted by short viewport height rather than width — a phone turned sideways is
+   the case this catches (height typically 340-430px); a landscape tablet/laptop has
+   far more height than that and never enters this block, so it keeps the normal
+   desktop-style row layout untouched. Deliberately does NOT stack .game-body into a
+   column the way portrait does above: with width to spare and height at a premium,
+   keeping .board-wrap and .side-panel side-by-side (the row layout is the base/
+   default further up this file — nothing to override there) is what actually uses
+   the screen well instead of squashing the board down to a sliver like the old
+   width-only breakpoint did. */
+@media (orientation: landscape) and (max-height: 560px){
+  .game-header{ padding: 6px 12px; }
+  .game-header h2{ font-size:.92rem; }
+  .icon-btn{ padding: 6px 9px; font-size:.74rem; }
+  .board-wrap{ padding: 6px; perspective: none; }
+  #board-grid{ transform: none; }
+  /* Narrower than the 300px desktop default so the board keeps most of the width —
+     this is still a phone, just sideways. */
+  .side-panel{ width: 220px; }
+  .die{ font-size:1.3rem; }
+  .dice-tray{ padding:6px 10px; gap:6px; }
+  /* This is the actual fix for "can't scroll the panels independently": the portrait
+     block above caps the whole .side-panel at 44dvh, which on a short landscape
+     viewport leaves almost nothing for #action-bar/#log-panel once #player-panel and
+     the dice tray take their share. Here .side-panel isn't capped at all — it
+     stretches to .game-body's full height (the row-flex default), so #player-panel
+     keeps its own independent scroll region (max-height/overflow-y below) and
+     #log-panel's existing `flex:1; overflow-y:auto` (see base rule) actually has
+     real height to scroll within, instead of being squeezed to near-zero. */
+  #player-panel{ max-height: 30%; overflow-y:auto; padding: 8px; }
+  .player-card{ padding: 6px 9px; margin-bottom:5px; }
+  #action-bar{ padding: 8px; }
+  #log-panel{ padding: 8px; font-size:.76rem; }
 }
 
 @media (prefers-reduced-motion: reduce){

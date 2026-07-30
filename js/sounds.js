@@ -27,6 +27,10 @@ const SOUND_FILES = {
   landOnGo:           'sounds/land-on-go.mp3',
   landOnFreeParking:  'sounds/land-on-free-parking.mp3',
   fullSet:            'sounds/full-set.mp3',
+  // Placeholder path — swap this file in /sounds/ for a real "whoosh"/teleport
+  // effect whenever you have one; playSound() already no-ops safely if the file
+  // is missing, so nothing else needs to change.
+  teleport:        'sounds/teleport.mp3',
 
   declineBuy:      'sounds/decline-buy.mp3',
   buttonHover:     'sounds/button-hover.wav'

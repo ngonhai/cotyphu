@@ -818,14 +818,19 @@ async function handleBankruptcy(uid, creditorUid, opts){
   const room = (await roomRef().get()).val();
   const player = room.players[uid];
   if (player.bankrupt) return;
+  // The debt (and its creditor) may have been recorded a while ago — if that creditor
+  // has since gone bankrupt/left themselves, assets fall back to the bank instead of
+  // handing them to a player who's already out of the game.
+  const creditorStillActive = creditorUid && room.players[creditorUid] && !room.players[creditorUid].bankrupt;
+  const effectiveCreditor = creditorStillActive ? creditorUid : null;
   log(opts?.kicked ? `👢 ${player.name} đã bị đá vào đít.` : pickLine('bankruptcy', { name: player.name }));
   const updates = { [`players/${uid}/bankrupt`]: true, [`players/${uid}/money`]: 0, [`players/${uid}/debtTo`]: null };
   // hand over (or release) properties
   Object.keys(room.properties).forEach(idx => {
     if (room.properties[idx].owner === uid){
-      updates[`properties/${idx}/owner`] = creditorUid || null;
+      updates[`properties/${idx}/owner`] = effectiveCreditor;
       updates[`properties/${idx}/houses`] = 0;
-      updates[`properties/${idx}/mortgaged`] = creditorUid ? room.properties[idx].mortgaged : false;
+      updates[`properties/${idx}/mortgaged`] = effectiveCreditor ? room.properties[idx].mortgaged : false;
       updates[`properties/${idx}/landedSincePurchase`] = false;
     }
   });
@@ -879,6 +884,29 @@ function pickWeightedCard(deck){
   return deck[deck.length - 1]; // float rounding fallback
 }
 
+// ---------- Straight-line "flight" animation for teleport-style card moves ----------
+// Unlike movePlayer()'s tile-by-tile moveHop (a normal dice roll), these Chance/Chest
+// effects (Advance to X, nearest railroad/utility, pick-any-tile) relocate the player
+// in one jump — so instead of a stepped hop we broadcast a single from→to flight for
+// every client to animate (see maybeAnimateFlyHop() in ui.js), then only write the
+// real position once that animation has actually finished playing out.
+const FLY_DURATION_MS = 850;
+
+async function flyPlayerTo(uid, toTileIndex){
+  const room = (await roomRef().get()).val();
+  const player = room.players[uid];
+  const from = player.position;
+  if (from === toTileIndex) return; // nothing to animate — already there
+  await roomRef().update({
+    flyHop: { uid, from, to: toTileIndex, durationMs: FLY_DURATION_MS, nonce: Date.now() }
+  });
+  await new Promise(resolve => setTimeout(resolve, FLY_DURATION_MS));
+  await roomRef().update({
+    [`players/${uid}/position`]: toTileIndex,
+    flyHop: null
+  });
+}
+
 // Writes a one-shot marker so every connected client (via detectSoundEvents())
 // plays a "gained money"/"lost money" sound in sync, right when a Chance/Chest
 // card changes the drawing player's money. `delta` is signed: positive = gain,
@@ -903,7 +931,7 @@ async function drawCard(uid, deckType){
   switch(card.action){
     case 'goto': {
       const passesGo = card.to < player.position;
-      await roomRef(`players/${uid}/position`).set(card.to);
+      await flyPlayerTo(uid, card.to);
       if (card.collectGo && passesGo){
         await roomRef(`players/${uid}/money`).set(player.money + 200);
         await announceCardMoney(200);
@@ -986,7 +1014,7 @@ async function drawCard(uid, deckType){
       const rails = BOARD.filter(t=>t.type==='railroad').map(t=>t.i);
       const next = rails.find(i => i > player.position) ?? rails[0];
       const passesGo = next < player.position;
-      await roomRef(`players/${uid}/position`).set(next);
+      await flyPlayerTo(uid, next);
       if (passesGo){ await roomRef(`players/${uid}/money`).set(player.money + 200); await announceCardMoney(200); }
       const fresh = (await roomRef().get()).val();
       const pdata = fresh.properties[next];
@@ -1006,7 +1034,7 @@ async function drawCard(uid, deckType){
       const utils = BOARD.filter(t=>t.type==='utility').map(t=>t.i);
       const next = utils.find(i => i > player.position) ?? utils[0];
       const passesGo = next < player.position;
-      await roomRef(`players/${uid}/position`).set(next);
+      await flyPlayerTo(uid, next);
       if (passesGo){ await roomRef(`players/${uid}/money`).set(player.money + 200); await announceCardMoney(200); }
       await resolveTile(uid, next);
       return;
@@ -1035,11 +1063,11 @@ async function chooseTileDestination(tileIndex){
   const player = room.players[uid];
   const passesGo = tileIndex < player.position;
   await roomRef('pendingTileChoice').set(null);
-  await roomRef(`players/${uid}/position`).set(tileIndex);
+  log(`✨ ${player.name} dùng vận đỏ, dịch chuyển thẳng đến ${BOARD[tileIndex].name}!`);
+  await flyPlayerTo(uid, tileIndex);
   if (collectGo && passesGo){
     await roomRef(`players/${uid}/money`).set(player.money + 200);
   }
-  log(`✨ ${player.name} dùng vận đỏ, dịch chuyển thẳng đến ${BOARD[tileIndex].name}!`);
   await resolveTile(uid, tileIndex);
 }
 

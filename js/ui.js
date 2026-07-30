@@ -229,6 +229,7 @@ function renderGame(){
   document.getElementById('game-room-code-label').textContent = ROOM_ID;
   document.getElementById('spectator-badge').style.display = isSpectator() ? 'inline-block' : 'none';
   maybeAnimateMoveHop();
+  maybeAnimateFlyHop();
   renderBoard();
   renderPlayerPanel();
   renderDice();
@@ -496,8 +497,97 @@ function maybeAnimateMoveHop(){
   }
 }
 
+// ---------- Straight-line "flight" token animation for teleport-style card moves ----------
+// Companion to the tile-by-tile hop animation above, but for state.flyHop instead of
+// state.moveHop (see flyPlayerTo() in game.js) — a single continuous flight in a
+// straight line between two tiles, used for Chance/Chest "teleport" effects (Advance
+// to X, nearest railroad/utility, pick-any-tile) instead of hopping through every
+// tile in between. Shares the hoppingUid lock with the tile-by-tile hop above so
+// renderTokens() skips drawing the normal token for whoever's mid-flight, same as
+// it already does for a normal roll.
+
+let flyState = null; // { uid, to, key }
+let flyReleaseFallbackTimer = null;
+
+// Center point of a tile in #board-grid's own layout space (offsetLeft/offsetTop),
+// matching the space a position:absolute child of #board-grid is placed in — see the
+// `position: relative` added to #board-grid in the CSS for why this lines up.
+function tileCenterInGrid(tileIndex){
+  const el = document.querySelector(`[data-i="${tileIndex}"]`);
+  if (!el) return null;
+  return { x: el.offsetLeft + el.offsetWidth / 2, y: el.offsetTop + el.offsetHeight / 2 };
+}
+
+function ensureFlyTokenEl(uid){
+  let el = document.getElementById('fly-token');
+  if (!el){
+    el = document.createElement('div');
+    el.id = 'fly-token';
+    el.className = 'player-token flying';
+    document.getElementById('board-grid').appendChild(el);
+  }
+  const color = state.players[uid]?.color || '#f2b807';
+  el.style.background = color;
+  el.style.setProperty('--fly-glow', hexToRgba(color, .55));
+  return el;
+}
+
+function removeFlyTokenEl(){
+  const el = document.getElementById('fly-token');
+  if (el) el.remove();
+}
+
+function maybeAnimateFlyHop(){
+  if (state.flyHop){
+    const { uid, from, to, durationMs, nonce } = state.flyHop;
+    const key = `${uid}-${from}-${to}-${nonce}`;
+    if (!flyState || flyState.key !== key){
+      if (flyReleaseFallbackTimer){ clearTimeout(flyReleaseFallbackTimer); flyReleaseFallbackTimer = null; }
+      flyState = { uid, to, key };
+      hoppingUid = uid;
+      const el = ensureFlyTokenEl(uid);
+      const size = el.offsetWidth || 15;
+      const startPt = tileCenterInGrid(from);
+      // Snap to the start point with no transition, then (after a layout flush)
+      // turn transitions on and set the end point — this is what makes the browser
+      // actually animate the move instead of jumping straight there.
+      el.style.transition = 'none';
+      if (startPt){ el.style.left = (startPt.x - size/2) + 'px'; el.style.top = (startPt.y - size/2) + 'px'; }
+      playSound('teleport');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const endPt = tileCenterInGrid(to);
+          el.style.transition = `left ${durationMs}ms cubic-bezier(.32,.6,.36,1), top ${durationMs}ms cubic-bezier(.32,.6,.36,1)`;
+          if (endPt){ el.style.left = (endPt.x - size/2) + 'px'; el.style.top = (endPt.y - size/2) + 'px'; }
+        });
+      });
+    }
+    return;
+  }
+  if (flyState){
+    const p = state.players[flyState.uid];
+    if (p && p.position === flyState.to){
+      removeFlyTokenEl();
+      if (hoppingUid === flyState.uid) hoppingUid = null;
+      flyState = null;
+    } else if (!flyReleaseFallbackTimer){
+      // Safety net, same idea as the tile-by-tile hop's fallback: don't leave the
+      // real token permanently hidden if something (a dropped connection mid-flight)
+      // keeps position from ever catching up to the expected destination.
+      const stuckUid = flyState.uid;
+      flyReleaseFallbackTimer = setTimeout(() => {
+        removeFlyTokenEl();
+        if (hoppingUid === stuckUid) hoppingUid = null;
+        flyState = null;
+        flyReleaseFallbackTimer = null;
+        renderTokens();
+      }, FLY_DURATION_MS + 800);
+    }
+  }
+}
+
 function renderTokens(){
-  document.querySelectorAll('.player-token').forEach(t => { if (t.id !== 'hop-token') t.remove(); });
+  document.querySelectorAll('.player-token').forEach(t => { if (t.id !== 'hop-token' && t.id !== 'fly-token') t.remove(); });
   const grouped = {};
   Object.entries(state.players).forEach(([uid,p]) => {
     if (p.bankrupt || uid === hoppingUid) return;
@@ -953,7 +1043,7 @@ function openPropertyDetail(tileIndex){
     ${sellBlocked ? `<p class="muted" style="font-size:.78rem;">Thế chấp tài sản, nghĩa là không thể bán — mà chỉ có thể thế chấp.</p>` : ''}
     ${(cashRuleMode === 'sell' && pdata.houses > 0) ? `<p class="muted" style="font-size:.78rem;">Phải bán hết nhà trước đã.</p>` : ''}`;
   }
-    if (isMine && pdata.houses===0 && isMyTurn()){
+    if (isMine && pdata.houses===0){
       if (cashRuleMode === 'sell'){
         controls += `<div class="modal-actions">
           <button class="btn btn-secondary" id="mbtn-sell-property">Bán đất (+${Math.floor(tile.price/2)}k₫)</button>
