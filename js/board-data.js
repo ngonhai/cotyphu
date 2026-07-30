@@ -123,7 +123,7 @@ const CHANCE_CARDS = [
   { text: 'Ngừng lọ 1 hôm. Bú 100k₫ từ cô giáo', action: 'cash', amount: 100 },
   { text: 'Đi đến Circle K mua ít đồ', action: 'goto', to: 15, collectGo:true },
   { text: 'Đi đến Đại học Hà Nội', action: 'goto', to: 6, collectGo:true },
-  { text: '✨ Hà Nội Tour! Chọn BẤT KỲ ô nào trên bàn và teleport đến ✨', action: 'choose_tile', collectGo:true, weight:999 }
+  { text: '✨ Hà Nội Tour! Chọn BẤT KỲ ô nào trên bàn và teleport đến ✨', action: 'choose_tile', collectGo:true, weight:0.01 }
 ];
 
 const CHEST_CARDS = [
