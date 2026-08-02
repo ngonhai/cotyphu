@@ -159,18 +159,18 @@ const CHEST_CARDS = [
   { text: 'Có người ném 25k₫ vào mặt rồi 7 chọ', action: 'cash', amount: 25 },
   { text: 'Phí bảo kê BĐS: 40k₫/Nhà, 115k₫/CS2', action: 'repairs', house:40, hotel:115, weight:0.4 },
   { text: 'Tiền sinh lời từ mặt bằng: 35k₫/Nhà, 110k₫/CS2', action: 'repairs', house:-35, hotel:-110, weight:0.4 },
-  { text: 'Đánh con 36, về con 63. Mất CMN 10k₫', action: 'cash', amount: -10, weight:3 },
+  { text: 'Đánh con 36, về con 63. Mất cmn 10k₫', action: 'cash', amount: -10, weight:3 },
   { text: 'Đi làm thêm. Nhận 100k₫', action: 'cash', amount: 100, weight:0.9 },
   { text: 'Thừa kế 100k₫ từ cháu họ', action: 'cash', amount: 100 }
 ];
 
-const TOKEN_COLORS = ['#E8613C', '#3E8FB0', '#8860D0', '#D4A72C', '#4FA187', '#D0668A', '#7A7F87', '#C9A227'];
+const TOKEN_COLORS = ['#E8613C', '#3E8FB0', '#8860D0', '#D4A72C', '#4FA187', '#D0668A', '#7A7F87', '#C9A227', '#303841'];
 
 // Purely cosmetic — shown centered on a player's token, chosen for fun at the lobby
 // screen (see renderTokenCustomizer() in ui.js). '' is the first option, meaning "no
 // expression, just the plain color dot" — kept as a real selectable choice (not just
 // an implicit default) so it always renders in the same picker grid as everything else.
-const TOKEN_EMOJIS = ['', '😎','🤓','😈','🥳','👻','🤖','👽','🎩','🐯','🦊','🐸','🐼','🦁','🐰','🐶','🐱','🔥'];
+const TOKEN_EMOJIS = ['', '😎','🤓','🥰','🥳','🤑','🤖','👽','🥴','😠','🫨','🙂‍↕️','🤫','🫢','🫣','🐶','🫠','😎'];
 
 // Grid position on an 11x11 board (row, col), used for CSS placement.
 function tileGridPos(i){

@@ -133,21 +133,23 @@ function pickLine(key, vars = {}){
 // exact string as one of the options — no call site needs to change.
 const TOAST_MESSAGES = {
   'Tên thì đéo nhập': [
-    'Tên thì đéo nhập',
-    'Quên nhập tên rồi kìa',
-    'Tên đâu mà tạo phòng?',
+    'Tên thì đéo điền vào',
+    'Bạn không có tên ạ??',
+    'Không có tên thì phòng 404 bạn nhé?',
     'Điền tên vào đã nào bạn ơi'
   ],
   'Tên đâu?? Code đâu??': [
     'Tên đâu?? Code đâu??',
-    'Thiếu tên hoặc code phòng rồi kìa',
-    'Điền đủ cả tên lẫn code đã'
+    'Thiếu tên hoặc code phòng nha',
+    'Điền đủ cả tên lẫn code đã',
+    'Quên gì chưa nhập đầy đủ không bạn'
   ],
   'Không đủ money !!!': [
     'Không đủ money !!!',
     'Nghèo thì đéo mua được đâu',
     'Ví lép kẹp rồi, mua sao được',
-    'Không đủ tiền mua đất này đâu'
+    'Không đủ tiền mua đất này đâu',
+    'Bạn nên '
   ],
   'Bạn không đủ tiền mặt': [
     'Bạn không đủ tiền mặt',

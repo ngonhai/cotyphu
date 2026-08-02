@@ -402,7 +402,7 @@ function groupFullSetOwner(group){
 }
 
 function tileInnerHtml(tile){
-  const icon = { chance:'❓', chest:'📦', tax:'💰', jail:'🚔', free:'🅿️', gotojail:'👮', go:'➡️' }[tile.type] || '';
+  const icon = { chance:'❓', chest:'♾️', tax:'💰', jail:'🔴', free:'🪙', gotojail:'🪖', go:'🚩' }[tile.type] || '';
   const price = tile.price ? `<div class="tile-price">${tile.price}k₫</div>` : '';
   // The color cap doubles as a house-level battery gauge (see .charge-bars in CSS);
   // only property tiles carry a group, and only property tiles ever have houses,
@@ -1022,7 +1022,7 @@ function openPropertyDetail(tileIndex){
   const tile = BOARD[tileIndex];
   const pdata = state.properties[tileIndex];
   const modal = document.getElementById('modal');
-  const owner = pdata.owner ? state.players[pdata.owner].name : 'chưa có';
+  const owner = pdata.owner ? state.players[pdata.owner].name : '(chưa có)';
   let rentLines = '';
   if (tile.type === 'property'){
     const labels = ['Khởi điểm (full set màu = x2)','1 Tòa Nhà','2 Tòa Nhà','3 Tòa Nhà','4 Tòa Nhà','Cơ sở hai'];
@@ -1381,7 +1381,7 @@ function buildTokenCustomizer(prefix){
 
   const emojiLabel = document.createElement('div');
   emojiLabel.className = 'swatch-group-label';
-  emojiLabel.textContent = 'Biểu cảm (không ảnh hưởng gì, chỉ cho vui)';
+  emojiLabel.textContent = 'Biểu cảm của cậu (phản ánh số phận trong game một cách không rõ ràng)';
   rows.appendChild(emojiLabel);
 
   const emojiRow = document.createElement('div');
@@ -1441,7 +1441,7 @@ let chatUnreadCount = 0;
 
 function onChatReset(){
   const list = document.getElementById('chat-messages');
-  if (list) list.innerHTML = '<div class="chat-empty-msg">Chưa có tin nhắn nào — nói gì đó đi!</div>';
+  if (list) list.innerHTML = '<div class="chat-empty-msg">Chưa có tin nhắn nào — bóc tem!</div>';
   chatUnreadCount = 0;
   updateChatUnreadBadge();
 }

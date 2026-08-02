@@ -643,7 +643,7 @@ async function movePlayer(uid, steps){
     updates[`players/${uid}/money`] = player.money + 200;
   }
   await roomRef().update(updates);
-  if (passedGo) log(`${player.name} đi qua Về Quê và dược nhận 200k₫.`);
+  if (passedGo) log(`${player.name} đi qua Quê. nhận 200k₫.`);
   await resolveTile(uid, newPos);
 }
 
@@ -657,7 +657,7 @@ async function resolveTile(uid, tileIndex){
       const bonus = Number(room.settings.goBonusAmount);
       const amt = Number.isFinite(bonus) && bonus >= 0 ? bonus : 200;
       await roomRef(`players/${uid}/money`).set(player.money + amt);
-      log(`${player.name} nhảy chính xác vào Về Quê nên nhận thêm ${amt}k₫ bố thí!`);
+      log(`${player.name} thực sự Về Quê nên nhận thêm ${amt}k₫ bố thí!`);
     } else {
       log(`${player.name} đến ô ${tile.name}.`);
     }

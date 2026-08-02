@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>XVIDEOS</title>
-<link rel="icon" href="icon.ico">
-<meta property="og:image" content="https://ngonhai.github.io/cotyphu/logo.png">
+<title>Xhamster</title>
+<link rel="icon" href="icon_2.ico">
+<meta property="og:image" content="https://ngonhai.github.io/cotyphu/logo_2.png">
 <meta property="og:url" content="https://ngonhai.github.io/cotyphu/">
-<link rel="stylesheet" href="css/style.css?v=20260727">
+<link rel="stylesheet" href="css/style.css?v=20260731">
 </head>
 <body>
 
@@ -111,8 +111,8 @@
             <strong>Phí ra 'tù'</strong>
             <small>Lượng tiền mất để ra `tù` sớm, không thì cải tạo đủ tốt để ra thôi.</small>
             <div class="numeric-input-row">
-              <span class="numeric-prefix">$</span>
               <input type="number" id="input-jailfine" min="0" step="10" value="100">
+              <span class="numeric-prefix">k₫</span>
             </div>
           </span>
         </div>
@@ -132,8 +132,8 @@
             <strong>Thêm tiền khi đến đúng ô Về Quê</strong>
             <small>Giẫm đúng ô Về Quê (không phải đi qua) sẽ nhận thêm một ít tiền, thường thì là + $100.</small>
             <div class="numeric-input-row" style="max-width:160px;margin-top:8px;">
-              <span class="numeric-prefix">+$</span>
               <input type="number" id="input-gobonus-amount" min="0" step="50" value="100">
+              <span class="numeric-prefix">+k₫</span>
             </div>
           </span>
         </label>
@@ -147,14 +147,14 @@
         <label class="rule-row" id="rule-auction-railways">
           <input type="checkbox" id="rule-auction-railways-toggle">
           <span>
-            <strong>Đấu giá Sân bay/Cảng</strong>
-            <small>Ai cũng tham gia đấu giá 4 ô đặc biệt sân bay/cảng. Ai cũng bỏ đấu giá = reset. Người trả giá cao nhất mà khi không còn ai thì sẽ sở hữu. Bú phết!</small>
+            <strong>Đấu giá Cửa hàng (Đặc biệt)</strong>
+            <small>Ai cũng tham gia đấu giá 4 ô đặc biệt (Mixue, Circle-K,...). Ai cũng bỏ đấu giá = reset. Người trả giá cao nhất mà khi không còn ai thì sẽ sở hữu. Giá cơ bản = giá lúc mua đứt. Bú phết!</small>
           </span>
         </label>
         <label class="rule-row" id="rule-jailvisitbonus">
           <input type="checkbox" id="rule-jailvisitbonus-toggle">
           <span>
-            <strong>Phí thăm tù</strong>
+            <strong>Phí thăm `tù`</strong>
             <small>Trong tù mà có người thì sẽ mất phí</small>
           </span>
         </label>
@@ -162,7 +162,7 @@
           <input type="checkbox" id="rule-chance-teleport-toggle">
           <span>
             <strong>Phần thưởng cực lớn</strong>
-            <small>Thêm một phần thưởng là người chơi có thể chọn bất kì ô đất nào mình muốn để đến</small>
+            <small>Thêm một phần thưởng khi giẫm vào ô cơ hội là người chơi có thể chọn bất kì ô đất nào mình muốn để đến</small>
           </span>
         </label>
         <p id="rules-readonly-hint" class="muted" style="font-size:.8rem;">Only the host can change these.</p>
@@ -212,7 +212,7 @@
     </button>
     <div id="chat-panel" class="chat-panel hidden">
       <div class="chat-panel-header">
-        <span>💬 Chat phòng</span>
+        <span>💬 Chat chung</span>
         <button type="button" id="chat-close-btn" class="chat-close-btn" title="Thu gọn">✕</button>
       </div>
       <div id="chat-messages" class="chat-messages"></div>
@@ -229,12 +229,12 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-  <script src="js/firebase-config.js?v=20260727"></script>
-  <script src="js/board-data.js?v=20260727"></script>
-  <script src="js/log-messages.js?v=20260727"></script>
-  <script src="js/sounds.js?v=20260727"></script>
-  <script src="js/game.js?v=20260727"></script>
-  <script src="js/ui.js?v=20260727"></script>
+  <script src="js/firebase-config.js?v=20260731"></script>
+  <script src="js/board-data.js?v=20260731"></script>
+  <script src="js/log-messages.js?v=20260731"></script>
+  <script src="js/sounds.js?v=20260731"></script>
+  <script src="js/game.js?v=20260731"></script>
+  <script src="js/ui.js?v=20260731"></script>
   <script>
     // simple tab switching on the lobby screen
     document.querySelectorAll('.tab-btn').forEach(btn => {
