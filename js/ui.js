@@ -850,11 +850,11 @@ function renderRailAuctionChoiceBar(bar){
     </div>
     <div class="rail-auction-controls">
       <div class="numeric-input-row">
-        <span class="numeric-prefix">$</span>
+        <span class="numeric-prefix">k₫</span>
         <input type="number" id="rail-bid-input" min="${minBid}" step="10" value="${minBid}">
       </div>
-      <button class="btn" id="rail-bid-submit">Auction</button>
-      <button class="btn btn-secondary" id="rail-bid-decline">Decline</button>
+      <button class="btn" id="rail-bid-submit">Đấu giá</button>
+      <button class="btn btn-secondary" id="rail-bid-decline">Bỏ</button>
     </div>`;
   bar.appendChild(wrap);
   const submitBtn = wrap.querySelector('#rail-bid-submit');

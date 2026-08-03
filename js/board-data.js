@@ -118,12 +118,12 @@ const CHANCE_CARDS = [
   { text: 'Lùi 1 bước. Tiến 3 bước', action: 'move', amount: 2 },
   { text: 'Khát quá! Đến chỗ ăn uống gần nhất', action: 'nearest_utility' },
   { text: 'Chủ nhật rảnh rỗi quá. Cho mỗi người chơi 50k₫', action: 'pay_each', amount: 50 },
-  { text: 'Họ rủ đi chơi mà từ chối, bù mỗi người chơi 150k₫', action: 'pay_each', amount: 150, weight:0.3 },
+  { text: 'Họ rủ đi chơi mà từ chối, bù mỗi người chơi 150k₫', action: 'pay_each', amount: 150, weight:0.01 },
   { text: 'Chúa thương tình, phát lúa cho mình 150k₫', action: 'cash', amount: 150, weight:0.8 },
   { text: 'Ngừng lọ 1 hôm. Bú 100k₫ từ cô giáo', action: 'cash', amount: 100 },
   { text: 'Đi đến Circle K mua ít đồ', action: 'goto', to: 15, collectGo:true },
   { text: 'Đi đến Đại học Hà Nội', action: 'goto', to: 6, collectGo:true },
-  { text: '✨ Hà Nội Tour! Chọn BẤT KỲ ô nào trên bàn và teleport đến ✨', action: 'choose_tile', collectGo:true, weight:0.01 }
+  { text: '✨ Hà Nội Tour! Chọn BẤT KỲ ô nào trên bàn và teleport đến ✨', action: 'choose_tile', collectGo:true, weight:0.005 }
 ];
 
 const CHEST_CARDS = [
@@ -140,8 +140,8 @@ const CHEST_CARDS = [
   { text: 'Cút luôn vào khu Quân sự', action: 'gotojail', weight:1.1 },
   { text: 'Tổ chức mừng thọ bản thân. Thu 50k₫ từ mỗi người chơi', action: 'collect_each', amount: 50 },
   { text: 'Bị mỗi người ném 100k₫ vào mặt', action: 'collect_each', amount: 100, weight:0.3 },
-  { text: 'Bị mọi người chơi some, thu mỗi 150k₫', action: 'collect_each', amount: 150, weight:0.07 },
-  { text: 'Chơi some mọi người, trả mỗi người 150k₫', action: 'pay_each', amount: 150, weight:0.1 },
+  { text: 'Bị mọi người chơi some, thu mỗi 150k₫', action: 'collect_each', amount: 150, weight:0.01 },
+  { text: 'Chơi some mọi người, trả mỗi người 150k₫', action: 'pay_each', amount: 150, weight:0.01 },
   { text: 'Bao trà sữa cho bạn bè 50k₫/mạng', action: 'pay_each', amount: 50, weight:0.4 },
   { text: 'Mời mọi người bún đậu ở quán đường Nguyễn Ngọc Vũ 50k₫/mạng', action: 'pay_each', amount: 50, weight:0.4 },
   { text: 'Thủng săm trên đường, sửa xe mất 70k₫', action: 'cash', amount: -70, weight:0.6 },
@@ -154,7 +154,7 @@ const CHEST_CARDS = [
   { text: 'Đi hiến máu tình nguyện. Làm quà nho nhỏ 50k₫', action: 'cash', amount: 50 },
   { text: 'Bắt Taxi đi thi sáng mất 50k₫', action: 'cash', amount: -50 },
   { text: 'Đêm qua chơi đậm sâu! Nay tốn 100k₫ đi khám', action: 'cash', amount: -100 },
-  { text: 'Đặt Xanh SM mất 150k₫', action: 'cash', amount: -150 },
+  { text: 'Đặt Xanh SM mất 150k₫', action: 'cash', amount: -150, weight:0.03 },
   { text: 'Cháy nhà trọ. May mà chỉ mất 100k₫', action: 'cash', amount: -100, weight:0.9 },
   { text: 'Có người ném 25k₫ vào mặt rồi 7 chọ', action: 'cash', amount: 25 },
   { text: 'Phí bảo kê BĐS: 40k₫/Nhà, 115k₫/CS2', action: 'repairs', house:40, hotel:115, weight:0.4 },
