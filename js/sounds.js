@@ -24,6 +24,10 @@ const SOUND_FILES = {
   footstep:        'sounds/footstep.wav',
   cardGain:        'sounds/card-gain.mp3',
   cardLose:        'sounds/card-lose.mp3',
+  // Played when money is deducted by rent / tax / fines / jail fee. Reuses the
+  // card-lose sound for now — drop a dedicated file in /sounds/ and change this path
+  // (e.g. a coin/cash-register sound) whenever you like.
+  payMoney:        'sounds/card-lose.mp3',
   landOnGo:           'sounds/land-on-go.mp3',
   landOnFreeParking:  'sounds/land-on-free-parking.mp3',
   fullSet:            'sounds/full-set.mp3',

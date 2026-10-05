@@ -225,8 +225,25 @@ function renderWaitingRoom(){
 
 // ---------- Game board ----------
 
+// When the turn passes to me, make sure nothing is covering the action bar — the phone
+// log bottom sheet is a full-width overlay, so a player reading it would otherwise see
+// no buttons at all when their turn starts.
+let prevTurnUidForSheet = null;
+function maybeCloseLogSheetOnMyTurn(){
+  const t = state.status === 'playing' ? state.currentTurn : null;
+  if (t && t !== prevTurnUidForSheet && t === MY_UID){
+    const sheet = document.getElementById('log-sheet');
+    if (sheet && sheet.classList.contains('open')){
+      setLogSheetOpen(false);
+      showToast('🎲 Đến lượt bạn rồi!');
+    }
+  }
+  prevTurnUidForSheet = t;
+}
+
 function renderGame(){
   document.getElementById('game-room-code-label').textContent = ROOM_ID;
+  maybeCloseLogSheetOnMyTurn();
   document.getElementById('spectator-badge').style.display = isSpectator() ? 'inline-block' : 'none';
   maybeAnimateMoveHop();
   maybeAnimateFlyHop();
@@ -764,19 +781,19 @@ function renderActionBar(){
   }
 
   if (me && me.bankrupt){
-    bar.innerHTML = `<div class="waiting-msg">👋 You're out of the game — spectating the rest.</div>`;
+    bar.innerHTML = `<div class="waiting-msg"> Bạn không trong ván cờ của những vị bần phú (giàu r)</div>`;
     return;
   }
 
   if (state.rolling){
-    bar.innerHTML = `<div class="waiting-msg">🎲 Rolling…</div>`;
+    bar.innerHTML = `<div class="waiting-msg">🎲 Đang lọ...</div>`;
     return;
   }
 
   const myTurn = isMyTurn();
 
   if (!myTurn){
-    bar.innerHTML = `<div class="waiting-msg">Waiting for ${escapeHtml(state.players[state.currentTurn]?.name || '...')} to play…</div>`;
+    bar.innerHTML = `<div class="waiting-msg">Đang chờ ${escapeHtml(state.players[state.currentTurn]?.name || '...')} </div>`;
     return;
   }
 
@@ -788,7 +805,7 @@ function renderActionBar(){
   if (me.inJail && state.turnPhase === 'roll'){
     const fine = state.settings?.jailFineAmount ?? 50;
     bar.appendChild(btn(`Trả ${fine}k₫ để ra khỏi khu Quân sự`, payJailFine, me.money < fine));
-    bar.appendChild(btn(`Sử dụng Jail-Free Card (${me.jailFreeCards||0})`, useJailCard, (me.jailFreeCards||0) < 1));
+    bar.appendChild(btn(`Sử dụng 1 Lượt-ra-ngoài (${me.jailFreeCards||0})`, useJailCard, (me.jailFreeCards||0) < 1));
     bar.appendChild(btn('Gieo xúc đôi', rollForJail));
     return;
   }
@@ -824,7 +841,7 @@ function renderDebtBar(bar, me){
   const row = document.createElement('div');
   row.className = 'debt-actions';
   row.appendChild(btn('Quản Lý Tài Sản', openPropertiesDrawer));
-  row.appendChild(btn('Tuyên Bố Nghỉ học', confirmBankruptcy, false, true));
+  row.appendChild(btn('Tuyên Bố 7 học', confirmBankruptcy, false, true));
   bar.appendChild(row);
 }
 
@@ -976,9 +993,39 @@ function colorizeLogMessage(escapedMsg){
 
 function renderLog(){
   const el = document.getElementById('log-panel');
-  const entries = Object.values(state.log || {}).sort((a,b) => a.ts - b.ts).slice(-40);
-  el.innerHTML = entries.map(e => `<div class="log-entry">${colorizeLogMessage(escapeHtml(e.msg))}</div>`).join('');
+  const all = Object.values(state.log || {}).sort((a,b) => a.ts - b.ts);
+  const toHtml = list => list.map(e => `<div class="log-entry">${colorizeLogMessage(escapeHtml(e.msg))}</div>`).join('');
+  el.innerHTML = toHtml(all.slice(-40));
   el.scrollTop = el.scrollHeight;
+
+  // Phone bottom sheet: same log, longer history. Keep the reader's place if they've
+  // scrolled up to read older lines while new ones arrive.
+  const sheetBody = document.getElementById('log-sheet-body');
+  if (sheetBody){
+    const nearBottom = sheetBody.scrollHeight - sheetBody.scrollTop - sheetBody.clientHeight < 80;
+    const prevTop = sheetBody.scrollTop;
+    sheetBody.innerHTML = toHtml(all.slice(-100));
+    sheetBody.scrollTop = nearBottom ? sheetBody.scrollHeight : prevTop;
+  }
+}
+
+// Bottom-sheet log for phones in portrait (CSS hides the sheet everywhere else).
+function setLogSheetOpen(open){
+  document.getElementById('log-sheet').classList.toggle('open', open);
+  document.getElementById('log-backdrop').classList.toggle('open', open);
+  if (open){
+    const b = document.getElementById('log-sheet-body');
+    b.scrollTop = b.scrollHeight;
+  }
+}
+function initLogSheet(){
+  const isPhonePortrait = () => window.matchMedia('(max-width: 860px) and (orientation: portrait)').matches;
+  document.getElementById('log-wrap').addEventListener('click', () => { if (isPhonePortrait()) setLogSheetOpen(true); });
+  // Rotating to landscape/desktop while the sheet is open: close it so it can't pop back later.
+  window.addEventListener('resize', () => { if (!isPhonePortrait()) setLogSheetOpen(false); });
+  document.getElementById('log-sheet-close').addEventListener('click', () => setLogSheetOpen(false));
+  document.getElementById('log-backdrop').addEventListener('click', () => setLogSheetOpen(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') setLogSheetOpen(false); });
 }
 
 function renderWinnerBanner(){
@@ -1168,9 +1215,9 @@ function renderIncomingTrades(){
       <div class="trade-side"><span class="label">Họ muốn:</span> ${escapeHtml(describeTradeSide(t.receive))}</div>
       ${t.note ? `<div class="trade-note">"${escapeHtml(t.note)}"</div>` : ''}
       <div class="trade-actions">
-        <button class="btn" data-act="accept">Accept</button>
-        <button class="btn btn-secondary" data-act="counter">Counter</button>
-        <button class="btn btn-secondary" data-act="decline">Decline</button>
+        <button class="btn" data-act="accept">Bú cái deal</button>
+        <button class="btn btn-secondary" data-act="counter">Mặc cả</button>
+        <button class="btn btn-secondary" data-act="decline">Từ chối</button>
       </div>
     </div>`).join('');
   wrap.querySelectorAll('.trade-card').forEach(card => {
@@ -1196,7 +1243,7 @@ function renderOutgoingTrades(){
       </div>
       <div class="trade-side"><span class="label">Bạn sẽ đưa:</span> ${escapeHtml(describeTradeSide(t.give))}</div>
       <div class="trade-side"><span class="label">Bạn mong muốn:</span> ${escapeHtml(describeTradeSide(t.receive))}</div>
-      ${t.status === 'pending' ? `<div class="trade-actions"><button class="btn btn-secondary" data-act="cancel">Cancel offer</button></div>` : ''}
+      ${t.status === 'pending' ? `<div class="trade-actions"><button class="btn btn-secondary" data-act="cancel">Hủy Kèo</button></div>` : ''}
     </div>`).join('');
   wrap.querySelectorAll('[data-act="cancel"]').forEach(btn => {
     const id = btn.closest('.trade-card').dataset.id;
@@ -1213,7 +1260,7 @@ function openTradeBuilder(prefill){
   modal.innerHTML = `
     <div class="modal-card trade-builder" style="max-width:460px;">
       <button class="modal-close" id="modal-close">✕</button>
-      <h3>${prefill?.counterOf ? 'Counter Offer' : 'Propose a Trade'}</h3>
+      <h3>${prefill?.counterOf ? 'Mặc cả' : 'Tạo Trade'}</h3>
       <label>Trade with</label>
       <select id="tb-target">
         ${others.map(u => `<option value="${u}" ${u===defaultTarget?'selected':''}>${escapeHtml(state.players[u].name)}</option>`).join('')}
@@ -1569,13 +1616,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-properties').addEventListener('click', openPropertiesDrawer);
   document.getElementById('btn-trades').addEventListener('click', openTradeCenter);
   document.getElementById('btn-bankrupt').addEventListener('click', () => {
-    if (confirm("Nghỉ học hả? Nếu nghỉ học sẽ thành người xem của ván này.")){
+    if (confirm("Nghỉ học hả? Có thể sẽ thành người xem của ván này.")){
       giveUpBankruptcy();
     }
   });
   document.getElementById('btn-leave-game').addEventListener('click', () => {
     if (confirm("Bạn muốn rời game!?!")) leaveGame();
   });
+  initLogSheet();
   document.getElementById('chat-toggle-btn').addEventListener('click', () => setChatPanelOpen(!chatPanelOpen));
   document.getElementById('chat-close-btn').addEventListener('click', () => setChatPanelOpen(false));
   document.getElementById('chat-form').addEventListener('submit', (e) => {

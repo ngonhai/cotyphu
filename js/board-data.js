@@ -159,7 +159,8 @@ const CHEST_CARDS = [
   { text: 'Có người ném 25k₫ vào mặt rồi 7 chọ', action: 'cash', amount: 25 },
   { text: 'Phí bảo kê BĐS: 40k₫/Nhà, 115k₫/CS2', action: 'repairs', house:40, hotel:115, weight:0.4 },
   { text: 'Tiền sinh lời từ mặt bằng: 35k₫/Nhà, 110k₫/CS2', action: 'repairs', house:-35, hotel:-110, weight:0.4 },
-  { text: 'Đánh con 36, về con 63. Mất cmn 10k₫', action: 'cash', amount: -10, weight:3 },
+  { text: 'Đánh con 36, về con 63. Mất cmn 10k₫', action: 'cash', amount: -10, weight:2 },
+  { text: 'Mua combo gà rán 59k₫', action: 'cash', amount: -59, weight:0.8 },
   { text: 'Đi làm thêm. Nhận 100k₫', action: 'cash', amount: 100, weight:0.9 },
   { text: 'Thừa kế 100k₫ từ cháu họ', action: 'cash', amount: 100 }
 ];

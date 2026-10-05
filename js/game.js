@@ -40,6 +40,7 @@ let prevMortgagedByTileForSound = {};
 let prevCardMoneyNonce = null;
 let prevDeclineBuyNonce = null;
 let prevBigRewardNonce = null;
+let prevPayNonce = null;
 let prevPositionByUidForSound = {};
 let prevFullGroupOwnerForSound = {};
 let prevCurrentTurnForSound = undefined;
@@ -74,6 +75,7 @@ function subscribeRoom(){
   prevCardMoneyNonce = null;
   prevDeclineBuyNonce = null;
   prevBigRewardNonce = null;
+  prevPayNonce = null;
   prevPositionByUidForSound = {};
   prevFullGroupOwnerForSound = {};
   soundBaselinePrimed = false;
@@ -160,38 +162,45 @@ function detectSoundEvents(){
   if (!prevRollingForSound && isRollingNow) playSound('diceRoll');
   prevRollingForSound = isRollingNow;
 
-  // Chance/Community Chest cards that change the drawing player's money write a
-  // one-shot `cardMoneyEvent` marker (see announceCardMoney() near drawCard()).
-  // Guarded on prevCardMoneyNonce !== null so reconnecting mid-game (where
-  // state.cardMoneyEvent may already hold an old nonce from before we joined)
-  // doesn't fire a sound for an event that already happened.
-  if (state.cardMoneyEvent && state.cardMoneyEvent.nonce){
-    if (prevCardMoneyNonce !== null && state.cardMoneyEvent.nonce !== prevCardMoneyNonce){
-      playSound(state.cardMoneyEvent.delta >= 0 ? 'cardGain' : 'cardLose');
-    }
-    prevCardMoneyNonce = state.cardMoneyEvent.nonce;
-  }
+  // One-shot "event" markers written to Firebase (cardMoneyEvent, declineBuyEvent,
+  // bigRewardEvent, payEvent). Each carries a unique `nonce`; a sound plays when the
+  // nonce differs from the previous tick's.
+  // BUG FIX: the old code only played when the previous nonce was already non-null,
+  // but in a fresh room the event field doesn't exist yet on the first tick, so the
+  // baseline stayed null and the FIRST event of every kind in a game was swallowed
+  // silently. Now the baseline is always recorded (as 0 when there's no event yet) and
+  // only the very first tick after connecting is skipped (to avoid replaying old
+  // events on reconnect).
+  const nonceOf = ev => (ev && ev.nonce) ? ev.nonce : 0;
 
-  // declineBuy() already writes this marker (see game actions) — same
-  // one-shot-nonce pattern as cardMoneyEvent above.
-  if (state.declineBuyEvent && state.declineBuyEvent.nonce){
-    if (prevDeclineBuyNonce !== null && state.declineBuyEvent.nonce !== prevDeclineBuyNonce){
-      playSound('declineBuy');
-    }
-    prevDeclineBuyNonce = state.declineBuyEvent.nonce;
+  // Chance/Community Chest cards that change money (see announceCardMoney()).
+  const cardN = nonceOf(state.cardMoneyEvent);
+  if (!firstTick && cardN && cardN !== prevCardMoneyNonce){
+    playSound(state.cardMoneyEvent.delta >= 0 ? 'cardGain' : 'cardLose');
   }
+  prevCardMoneyNonce = cardN;
 
-  // "Phần thưởng cực lớn" (choose_tile / đi-đến-bất-cứ-đâu) card being drawn writes
-  // this one-shot marker (see drawCard()'s 'choose_tile' case) — same nonce pattern
-  // as cardMoneyEvent/declineBuyEvent above, so every client plays the reveal sound
-  // in sync the moment the card is drawn, separate from the `teleport` sound that
-  // plays later once the player actually picks a tile and flies there.
-  if (state.bigRewardEvent && state.bigRewardEvent.nonce){
-    if (prevBigRewardNonce !== null && state.bigRewardEvent.nonce !== prevBigRewardNonce){
-      playSound('bigReward');
-    }
-    prevBigRewardNonce = state.bigRewardEvent.nonce;
+  // Money paid out for rent / tax / fines / jail fee (see chargePlayer(), payJailFine()).
+  // Previously these had NO sound at all — only card money had one.
+  const payN = nonceOf(state.payEvent);
+  if (!firstTick && payN && payN !== prevPayNonce){
+    playSound('payMoney');
   }
+  prevPayNonce = payN;
+
+  // declineBuy() writes this marker.
+  const declineN = nonceOf(state.declineBuyEvent);
+  if (!firstTick && declineN && declineN !== prevDeclineBuyNonce){
+    playSound('declineBuy');
+  }
+  prevDeclineBuyNonce = declineN;
+
+  // "Phần thưởng cực lớn" (choose_tile card) marker, see drawCard().
+  const bigN = nonceOf(state.bigRewardEvent);
+  if (!firstTick && bigN && bigN !== prevBigRewardNonce){
+    playSound('bigReward');
+  }
+  prevBigRewardNonce = bigN;
 
   if (state.properties){
     for (const idx in state.properties){
@@ -801,11 +810,16 @@ function computeRent(room, tileIndex){
 // or mortgaging property (see sellHouse/toggleMortgage), or declare bankruptcy themselves
 // via the "Declare Bankruptcy" button. Returns true if this charge put the player in debt,
 // so callers know to skip finishAction() until the debt is resolved.
-async function chargePlayer(uid, amount, toUid){
+async function chargePlayer(uid, amount, toUid, opts){
   const room = (await roomRef().get()).val();
   const player = room.players[uid];
   const newMoney = player.money - amount;
   const updates = { [`players/${uid}/money`]: newMoney };
+  // One-shot marker so every client plays the "paid money" sound (see detectSoundEvents).
+  // Card charges pass {silent:true} because they already announce via announceCardMoney().
+  if (amount > 0 && !(opts && opts.silent)){
+    updates['payEvent'] = { amount, nonce: Date.now() + '-' + Math.random().toString(36).slice(2, 6) };
+  }
   if (toUid){
     updates[`players/${toUid}/money`] = room.players[toUid].money + amount;
   } else if (amount > 0 && room.settings?.freeParkingJackpot){
@@ -1054,7 +1068,7 @@ async function drawCard(uid, deckType){
         const p = room.properties[idx];
         if (p.owner === uid){ total += p.houses===5 ? card.hotel : p.houses*card.house; }
       });
-      const inDebt = await chargePlayer(uid, total, null);
+      const inDebt = await chargePlayer(uid, total, null, { silent: true });
       await announceCardMoney(-total);
       if (!inDebt) await finishAction(uid);
       return;
@@ -1367,7 +1381,8 @@ async function payJailFine(){
   const updates = {
     [`players/${MY_UID}/money`]: state.players[MY_UID].money - fine,
     [`players/${MY_UID}/inJail`]: false,
-    [`players/${MY_UID}/jailTurns`]: 0
+    [`players/${MY_UID}/jailTurns`]: 0,
+    payEvent: { amount: fine, nonce: Date.now() + '-' + Math.random().toString(36).slice(2, 6) }
   };
   if (state.settings?.freeParkingJackpot){
     updates['freeParkingPot'] = (state.freeParkingPot||0) + fine;
