@@ -7,7 +7,7 @@
 <link rel="icon" href="icon_2.ico">
 <meta property="og:image" content="https://ngonhai.github.io/cotyphu/logo_2.png">
 <meta property="og:url" content="https://ngonhai.github.io/cotyphu/">
-<link rel="stylesheet" href="css/style.css?v=20260731">
+<link rel="stylesheet" href="css/style.css?v=20260930d">
 </head>
 <body>
 
@@ -198,7 +198,10 @@
           <span class="die" id="die2">⚀</span>
         </div>
         <div id="action-bar"></div>
-        <div id="log-panel"></div>
+        <div class="log-wrap" id="log-wrap">
+          <button type="button" class="log-expand-btn" id="log-expand-btn">📜 Nhật ký ván đấu — chạm để xem đầy đủ</button>
+          <div id="log-panel"></div>
+        </div>
       </div>
     </div>
 
@@ -207,6 +210,13 @@
          board; see .chat-toggle-btn/.chat-panel in style.css for the desktop
          (small floating card near the board) vs. mobile (near-fullscreen sheet,
          since there's no room to show both chat and the board at once) treatment. -->
+    <!-- Full game log as a bottom sheet — phones (portrait) only. An overlay, so opening
+         it never resizes the board. See .log-sheet in style.css / initLogSheet() in ui.js. -->
+    <div id="log-backdrop" class="log-backdrop"></div>
+    <div id="log-sheet" class="log-sheet" role="dialog" aria-label="Nhật ký ván đấu">
+      <div class="log-sheet-header"><span>📜 Nhật ký ván đấu</span><button type="button" id="log-sheet-close" class="chat-close-btn" title="Đóng">✕</button></div>
+      <div id="log-sheet-body" class="log-sheet-body"></div>
+    </div>
     <button type="button" id="chat-toggle-btn" class="chat-toggle-btn" title="Chat">
       💬<span id="chat-unread-badge" class="chat-unread-badge" style="display:none;"></span>
     </button>
@@ -229,12 +239,12 @@
 
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-  <script src="js/firebase-config.js?v=20260731"></script>
-  <script src="js/board-data.js?v=20260731"></script>
-  <script src="js/log-messages.js?v=20260731"></script>
-  <script src="js/sounds.js?v=20260731"></script>
-  <script src="js/game.js?v=20260731"></script>
-  <script src="js/ui.js?v=20260731"></script>
+  <script src="js/firebase-config.js?v=20260930d"></script>
+  <script src="js/board-data.js?v=20260930d"></script>
+  <script src="js/log-messages.js?v=20260930d"></script>
+  <script src="js/sounds.js?v=20260930d"></script>
+  <script src="js/game.js?v=20260930d"></script>
+  <script src="js/ui.js?v=20260930d"></script>
   <script>
     // simple tab switching on the lobby screen
     document.querySelectorAll('.tab-btn').forEach(btn => {

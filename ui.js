@@ -225,8 +225,25 @@ function renderWaitingRoom(){
 
 // ---------- Game board ----------
 
+// When the turn passes to me, make sure nothing is covering the action bar — the phone
+// log bottom sheet is a full-width overlay, so a player reading it would otherwise see
+// no buttons at all when their turn starts.
+let prevTurnUidForSheet = null;
+function maybeCloseLogSheetOnMyTurn(){
+  const t = state.status === 'playing' ? state.currentTurn : null;
+  if (t && t !== prevTurnUidForSheet && t === MY_UID){
+    const sheet = document.getElementById('log-sheet');
+    if (sheet && sheet.classList.contains('open')){
+      setLogSheetOpen(false);
+      showToast('🎲 Đến lượt bạn rồi!');
+    }
+  }
+  prevTurnUidForSheet = t;
+}
+
 function renderGame(){
   document.getElementById('game-room-code-label').textContent = ROOM_ID;
+  maybeCloseLogSheetOnMyTurn();
   document.getElementById('spectator-badge').style.display = isSpectator() ? 'inline-block' : 'none';
   maybeAnimateMoveHop();
   maybeAnimateFlyHop();
@@ -976,9 +993,39 @@ function colorizeLogMessage(escapedMsg){
 
 function renderLog(){
   const el = document.getElementById('log-panel');
-  const entries = Object.values(state.log || {}).sort((a,b) => a.ts - b.ts).slice(-40);
-  el.innerHTML = entries.map(e => `<div class="log-entry">${colorizeLogMessage(escapeHtml(e.msg))}</div>`).join('');
+  const all = Object.values(state.log || {}).sort((a,b) => a.ts - b.ts);
+  const toHtml = list => list.map(e => `<div class="log-entry">${colorizeLogMessage(escapeHtml(e.msg))}</div>`).join('');
+  el.innerHTML = toHtml(all.slice(-40));
   el.scrollTop = el.scrollHeight;
+
+  // Phone bottom sheet: same log, longer history. Keep the reader's place if they've
+  // scrolled up to read older lines while new ones arrive.
+  const sheetBody = document.getElementById('log-sheet-body');
+  if (sheetBody){
+    const nearBottom = sheetBody.scrollHeight - sheetBody.scrollTop - sheetBody.clientHeight < 80;
+    const prevTop = sheetBody.scrollTop;
+    sheetBody.innerHTML = toHtml(all.slice(-100));
+    sheetBody.scrollTop = nearBottom ? sheetBody.scrollHeight : prevTop;
+  }
+}
+
+// Bottom-sheet log for phones in portrait (CSS hides the sheet everywhere else).
+function setLogSheetOpen(open){
+  document.getElementById('log-sheet').classList.toggle('open', open);
+  document.getElementById('log-backdrop').classList.toggle('open', open);
+  if (open){
+    const b = document.getElementById('log-sheet-body');
+    b.scrollTop = b.scrollHeight;
+  }
+}
+function initLogSheet(){
+  const isPhonePortrait = () => window.matchMedia('(max-width: 860px) and (orientation: portrait)').matches;
+  document.getElementById('log-wrap').addEventListener('click', () => { if (isPhonePortrait()) setLogSheetOpen(true); });
+  // Rotating to landscape/desktop while the sheet is open: close it so it can't pop back later.
+  window.addEventListener('resize', () => { if (!isPhonePortrait()) setLogSheetOpen(false); });
+  document.getElementById('log-sheet-close').addEventListener('click', () => setLogSheetOpen(false));
+  document.getElementById('log-backdrop').addEventListener('click', () => setLogSheetOpen(false));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') setLogSheetOpen(false); });
 }
 
 function renderWinnerBanner(){
@@ -1576,6 +1623,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-leave-game').addEventListener('click', () => {
     if (confirm("Bạn muốn rời game!?!")) leaveGame();
   });
+  initLogSheet();
   document.getElementById('chat-toggle-btn').addEventListener('click', () => setChatPanelOpen(!chatPanelOpen));
   document.getElementById('chat-close-btn').addEventListener('click', () => setChatPanelOpen(false));
   document.getElementById('chat-form').addEventListener('submit', (e) => {
